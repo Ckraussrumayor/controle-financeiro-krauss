@@ -1,0 +1,35 @@
+# Arquivos sensíveis (credenciais)
+auth_config.json
+email_config.json
+
+# Banco de dados local
+financeiro.db
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Ambiente virtual
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Streamlit secrets (local)
+.streamlit/secrets.toml
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Planilha de importação original
+PLANEJAMENTO APOSENTADORIA.xlsx
