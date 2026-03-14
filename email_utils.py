@@ -21,8 +21,11 @@ SUBJECT_MARKER = "Backup Financeiro Krauss"
 def load_config() -> dict:
     """Lê configuração do email_config.json (uso local)."""
     if os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError):
+            return {}
     return {}
 
 

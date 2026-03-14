@@ -1,18 +1,30 @@
 import streamlit as st
-import pandas as pd
-import calendar
-from datetime import datetime
+import traceback as _tb
+
+# ─── Guard global: qualquer exceção não-tratada aparece na tela ──────────────
+def _fatal(msg: str, exc: Exception):
+    """Exibe erro fatal e para o app (garante visibilidade no Streamlit Cloud)."""
+    try:
+        st.set_page_config(page_title="Erro – Controle Financeiro", page_icon="❌")
+    except Exception:
+        pass
+    st.error(f"❌ {msg}")
+    st.code(_tb.format_exc())
+    st.stop()
+
+try:
+    import pandas as pd
+    import calendar
+    from datetime import datetime
+except Exception as _e:
+    _fatal("Erro ao importar dependências padrão", _e)
 
 try:
     import database as db
     import email_utils
     import auth
-except Exception as _import_err:
-    import traceback as _tb
-    st.set_page_config(page_title="Erro – Controle Financeiro", page_icon="❌")
-    st.error(f"❌ Erro ao importar módulos: {_import_err}")
-    st.code(_tb.format_exc())
-    st.stop()
+except Exception as _e:
+    _fatal("Erro ao importar módulos do app", _e)
 
 # ─── Configuração ────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -31,10 +43,7 @@ MESES_PT = {
 try:
     db.init_db()
 except Exception as _e:
-    import traceback as _tb
-    st.error(f"❌ Erro ao inicializar banco de dados: {_e}")
-    st.code(_tb.format_exc())
-    st.stop()
+    _fatal("Erro ao inicializar banco de dados", _e)
 
 
 # ─── Tela de Login ───────────────────────────────────────────────────────────
@@ -151,8 +160,8 @@ def _auto_restore():
         st.session_state["_sync_hash"] = db.db_hash()
         return
 
-    import io, openpyxl
     try:
+        import io, openpyxl
         db.limpar_banco()
         wb_bk = openpyxl.load_workbook(io.BytesIO(excel_bytes), data_only=True)
         _importar_backup_workbook(wb_bk)
