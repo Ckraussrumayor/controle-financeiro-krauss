@@ -20,7 +20,11 @@ MESES_PT = {
     9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
 }
 
-db.init_db()
+try:
+    db.init_db()
+except Exception as _e:
+    st.error(f"❌ Erro ao inicializar banco de dados: {_e}")
+    st.stop()
 
 
 # ─── Tela de Login ───────────────────────────────────────────────────────────

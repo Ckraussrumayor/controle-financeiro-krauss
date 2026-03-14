@@ -3,11 +3,17 @@ Módulo de banco de dados SQLite para o app de controle financeiro.
 """
 import sqlite3
 import os
+import sys
 import hashlib
 from datetime import datetime, date
 from contextlib import contextmanager
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "financeiro.db")
+# No Streamlit Cloud (Linux) usa /tmp para garantir filesystem gravável.
+# Localmente (Windows/Mac) usa o diretório do próprio app.
+if sys.platform.startswith("linux"):
+    DB_PATH = "/tmp/financeiro.db"
+else:
+    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "financeiro.db")
 
 
 @contextmanager
