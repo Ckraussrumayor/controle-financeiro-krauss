@@ -2,9 +2,17 @@ import streamlit as st
 import pandas as pd
 import calendar
 from datetime import datetime
-import database as db
-import email_utils
-import auth
+
+try:
+    import database as db
+    import email_utils
+    import auth
+except Exception as _import_err:
+    import traceback as _tb
+    st.set_page_config(page_title="Erro – Controle Financeiro", page_icon="❌")
+    st.error(f"❌ Erro ao importar módulos: {_import_err}")
+    st.code(_tb.format_exc())
+    st.stop()
 
 # ─── Configuração ────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -23,7 +31,9 @@ MESES_PT = {
 try:
     db.init_db()
 except Exception as _e:
+    import traceback as _tb
     st.error(f"❌ Erro ao inicializar banco de dados: {_e}")
+    st.code(_tb.format_exc())
     st.stop()
 
 
