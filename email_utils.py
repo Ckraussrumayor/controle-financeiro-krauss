@@ -90,7 +90,7 @@ def send_backup(excel_bytes: bytes, filename: str, cfg: dict):
     part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
     msg.attach(part)
 
-    with smtplib.SMTP(cfg["smtp_host"], int(cfg["smtp_port"])) as server:
+    with smtplib.SMTP(cfg["smtp_host"], int(cfg["smtp_port"]), timeout=_TIMEOUT) as server:
         server.ehlo()
         server.starttls()
         server.login(cfg["smtp_user"], cfg["smtp_password"])
@@ -99,13 +99,16 @@ def send_backup(excel_bytes: bytes, filename: str, cfg: dict):
 
 # ── Recebimento ──────────────────────────────────────────────────────────────
 
+_TIMEOUT = 20  # segundos; evita travamento no startup do Streamlit Cloud
+
+
 def get_latest_backup(cfg: dict) -> tuple:
     """
     Busca na caixa de entrada o backup mais recente (pelo assunto).
     Retorna (excel_bytes: bytes, filename: str) ou (None, None).
     """
     raw_msg = None
-    imap = imaplib.IMAP4_SSL(cfg["imap_host"], int(cfg.get("imap_port", 993)))
+    imap = imaplib.IMAP4_SSL(cfg["imap_host"], int(cfg.get("imap_port", 993)), timeout=_TIMEOUT)
     try:
         imap.login(cfg["smtp_user"], cfg["smtp_password"])
         imap.select("INBOX")
@@ -148,7 +151,7 @@ def delete_old_backups(cfg: dict) -> int:
     Retorna a quantidade de e-mails removidos.
     """
     removed = 0
-    imap = imaplib.IMAP4_SSL(cfg["imap_host"], int(cfg.get("imap_port", 993)))
+    imap = imaplib.IMAP4_SSL(cfg["imap_host"], int(cfg.get("imap_port", 993)), timeout=_TIMEOUT)
     try:
         imap.login(cfg["smtp_user"], cfg["smtp_password"])
         imap.select("INBOX")

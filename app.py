@@ -547,7 +547,7 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     st.divider()
-    if st.button("⏹️ Encerrar App", use_container_width=True):
+    if st.button("⏹️ Encerrar Sessão", use_container_width=True):
         # Backup final antes de fechar
         cfg_exit = email_utils.get_config()
         if email_utils.is_configured(cfg_exit):
@@ -562,9 +562,9 @@ with st.sidebar:
                     st.toast("☁️ Backup final enviado", icon="✅")
                 except Exception:
                     pass
-        st.warning("Encerrando o servidor...")
-        import os, signal
-        os.kill(os.getpid(), signal.SIGTERM)
+        st.session_state.clear()
+        st.info("Sessão encerrada. Recarregue a página para entrar novamente.")
+        st.stop()
     st.caption("v1.0 • Controle Financeiro")
 
 

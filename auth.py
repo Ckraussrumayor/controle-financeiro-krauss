@@ -108,7 +108,7 @@ def enviar_recuperacao() -> str:
     msg["Subject"] = "Recuperação de Senha – Controle Financeiro Krauss"
 
     try:
-        with smtplib.SMTP(email_cfg["smtp_host"], int(email_cfg["smtp_port"])) as server:
+        with smtplib.SMTP(email_cfg["smtp_host"], int(email_cfg["smtp_port"]), timeout=20) as server:
             server.ehlo()
             server.starttls()
             server.login(email_cfg["smtp_user"], email_cfg["smtp_password"])
