@@ -203,6 +203,21 @@ def atualizar_observacoes_mes(mes_id, observacoes):
         conn.execute("UPDATE meses SET observacoes=? WHERE id=?", (observacoes or None, mes_id))
 
 
+def copiar_lancamentos_mes(origem_id, destino_id, categorias):
+    """Copia lançamentos das categorias indicadas de um mês para outro."""
+    with get_conn() as conn:
+        for cat in categorias:
+            rows = conn.execute(
+                "SELECT categoria, descricao, valor FROM lancamentos WHERE mes_id=? AND categoria=?",
+                (origem_id, cat)
+            ).fetchall()
+            for r in rows:
+                conn.execute(
+                    "INSERT INTO lancamentos (mes_id, categoria, descricao, valor) VALUES (?, ?, ?, ?)",
+                    (destino_id, r["categoria"], r["descricao"], r["valor"])
+                )
+
+
 # ---- LANÇAMENTOS MENSAIS ----
 
 CATEGORIAS_MES = [

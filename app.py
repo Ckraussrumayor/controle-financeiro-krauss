@@ -767,18 +767,41 @@ elif pagina == "📝 Contas do Mês":
 
     # Criar novo mês
     with st.expander("➕ Criar Novo Mês"):
-        c1, c2, c3 = st.columns([2, 2, 1])
-        with c1:
+        _c1, _c2 = st.columns(2)
+        with _c1:
             novo_mes = st.selectbox("Mês", range(1, 13), format_func=lambda x: MESES_PT[x],
                                     index=hoje.month - 1)
-        with c2:
+        with _c2:
             novo_ano = st.number_input("Ano", min_value=2020, max_value=2040, value=hoje.year)
-        with c3:
-            st.write("")
-            st.write("")
-            if st.button("Criar", type="primary"):
-                db.criar_mes(int(novo_ano), novo_mes)
-                st.rerun()
+
+        _copiar = st.checkbox("📋 Copiar lançamentos fixos de outro mês?")
+        _mes_origem_id = None
+        _cats_sel = []
+        if _copiar and meses:
+            _mes_origem_opts = {_m["id"]: nome_mes(_m["ano"], _m["mes"]) for _m in meses}
+            _mes_origem_id = st.selectbox(
+                "Mês de origem",
+                options=list(_mes_origem_opts.keys()),
+                format_func=lambda x: _mes_origem_opts[x],
+                key="novo_mes_origem_copia"
+            )
+            st.caption("Selecione o que copiar:")
+            _ca, _cb, _cc = st.columns(3)
+            with _ca:
+                if st.checkbox("🏠 Contas Fixas", value=True, key="copy_cat_conta_fixa"):
+                    _cats_sel.append("conta_fixa")
+            with _cb:
+                if st.checkbox("💳 Parceladas", value=True, key="copy_cat_parcelada"):
+                    _cats_sel.append("parcelada")
+            with _cc:
+                if st.checkbox("👤 Devedor (Nina)", value=True, key="copy_cat_devedor_nina"):
+                    _cats_sel.append("devedor_nina")
+
+        if st.button("✅ Criar Mês", type="primary"):
+            _novo_m = db.criar_mes(int(novo_ano), novo_mes)
+            if _copiar and _mes_origem_id and _cats_sel:
+                db.copiar_lancamentos_mes(_mes_origem_id, _novo_m["id"], _cats_sel)
+            st.rerun()
 
     if not meses:
         st.info("Crie o primeiro mês acima para começar.")
