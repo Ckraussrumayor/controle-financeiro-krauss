@@ -689,9 +689,13 @@ elif pagina == "📋 Planejamento Mensal":
                 with c1:
                     nome = st.text_input("Nome da fonte")
                 with c2:
-                    valor = st.number_input("Valor (R$)", min_value=0.0, step=50.0)
+                    valor = st.number_input("Valor (R$)", value=0.0, min_value=0.0, step=50.0, format="%.2f")
                 if st.form_submit_button("Adicionar", type="primary"):
-                    if nome:
+                    if not nome:
+                        st.warning("Informe o nome da fonte.")
+                    elif valor <= 0:
+                        st.warning("Informe um valor maior que zero.")
+                    else:
                         db.adicionar_fonte_renda(nome, valor)
                         st.rerun()
 
@@ -731,11 +735,15 @@ elif pagina == "📋 Planejamento Mensal":
                 with c1:
                     nome = st.text_input("Nome da despesa")
                 with c2:
-                    valor = st.number_input("Valor (R$)", min_value=0.0, step=50.0)
+                    valor = st.number_input("Valor (R$)", value=0.0, min_value=0.0, step=50.0, format="%.2f")
                 with c3:
                     detalhes = st.text_input("Detalhes (opcional)")
                 if st.form_submit_button("Adicionar", type="primary"):
-                    if nome:
+                    if not nome:
+                        st.warning("Informe o nome da despesa.")
+                    elif valor <= 0:
+                        st.warning("Informe um valor maior que zero.")
+                    else:
                         db.adicionar_despesa_planejamento(nome, valor, detalhes or None)
                         st.rerun()
 
@@ -882,14 +890,19 @@ elif pagina == "📝 Contas do Mês":
                     desc = st.text_input("Descrição do extra", key=f"nd_{cat_key}",
                                          placeholder="Ex: Farmácia, Presente...")
                 with fc2:
-                    val = st.number_input("Valor (R$)", step=10.0, key=f"nv_{cat_key}",
-                                          placeholder="R$")
+                    val = st.number_input("Valor (R$)", value=0.0, min_value=0.0, step=10.0,
+                                          format="%.2f", key=f"nv_{cat_key}")
                 with fc3:
                     st.write("")
                     add = st.form_submit_button("➕ Add")
-                if add and desc:
-                    db.adicionar_lancamento(mes_selecionado, cat_key, desc, val)
-                    st.rerun()
+                if add:
+                    if not desc:
+                        st.warning("Informe a descrição.")
+                    elif val <= 0:
+                        st.warning("Informe um valor maior que zero.")
+                    else:
+                        db.adicionar_lancamento(mes_selecionado, cat_key, desc, val)
+                        st.rerun()
 
             # --- Gerenciar dívidas (cadastrar/ver) ---
             with st.expander("📋 Gerenciar Dívidas"):
@@ -952,12 +965,17 @@ elif pagina == "📝 Contas do Mês":
                 desc = st.text_input("Descrição", key=f"nd_{cat_key}", label_visibility="collapsed",
                                      placeholder=f"Nova {cat_nome.lower()}...")
             with fc2:
-                val = st.number_input("Valor", step=10.0, key=f"nv_{cat_key}", label_visibility="collapsed",
-                                      placeholder="R$")
+                val = st.number_input("Valor (R$)", value=0.0, min_value=0.0, step=10.0,
+                                      format="%.2f", key=f"nv_{cat_key}", label_visibility="collapsed")
             with fc3:
                 add = st.form_submit_button("➕")
-            if add and desc:
-                db.adicionar_lancamento(mes_selecionado, cat_key, desc, val)
+            if add:
+                if not desc:
+                    st.warning("Informe a descrição.")
+                elif val <= 0:
+                    st.warning("Informe um valor maior que zero.")
+                else:
+                    db.adicionar_lancamento(mes_selecionado, cat_key, desc, val)
                 st.rerun()
 
     # Ações do mês
@@ -1069,16 +1087,22 @@ elif pagina == "✈️ Viagens / Eventos":
             fc1, fc2, fc3, fc4 = st.columns([3, 2, 1, 1])
             with fc1:
                 desc = st.text_input("Desc", key=f"nvd_{cat_key}", label_visibility="collapsed",
-                                     placeholder=f"Nova despesa...")
+                                     placeholder="Nova despesa...")
             with fc2:
-                val = st.number_input("Val", step=10.0, key=f"nvv_{cat_key}", label_visibility="collapsed")
+                val = st.number_input("Valor (R$)", value=0.0, min_value=0.0, step=10.0,
+                                      format="%.2f", key=f"nvv_{cat_key}", label_visibility="collapsed")
             with fc3:
                 nina = st.checkbox("Nina", key=f"nvn_{cat_key}")
             with fc4:
                 add = st.form_submit_button("➕")
-            if add and desc:
-                db.adicionar_lancamento_viagem(viagem_sel, cat_key, desc, val, nina)
-                st.rerun()
+            if add:
+                if not desc:
+                    st.warning("Informe a descrição.")
+                elif val <= 0:
+                    st.warning("Informe um valor maior que zero.")
+                else:
+                    db.adicionar_lancamento_viagem(viagem_sel, cat_key, desc, val, nina)
+                    st.rerun()
 
     st.divider()
     col_rv, col_av = st.columns([1, 1])
