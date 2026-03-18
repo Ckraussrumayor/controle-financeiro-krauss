@@ -198,6 +198,11 @@ def remover_mes(mes_id):
         conn.execute("DELETE FROM meses WHERE id=?", (mes_id,))
 
 
+def atualizar_observacoes_mes(mes_id, observacoes):
+    with get_conn() as conn:
+        conn.execute("UPDATE meses SET observacoes=? WHERE id=?", (observacoes or None, mes_id))
+
+
 # ---- LANÇAMENTOS MENSAIS ----
 
 CATEGORIAS_MES = [

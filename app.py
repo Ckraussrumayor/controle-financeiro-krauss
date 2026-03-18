@@ -481,6 +481,7 @@ border:2px solid #333;border-radius:8px;padding:20px;max-width:520px;margin:0 au
   <td style="padding:6px 8px;text-align:right;">{fmt(liquido_nina)}</td>
 </tr>
 </table>
+{f'<div style="margin-top:10px;padding:8px 10px;background:#f5f5f5;border-radius:6px;font-size:0.85rem;color:#555;"><strong>\U0001f4dd Obs:</strong> {m["observacoes"]}</div>' if m.get("observacoes") else ''}
 <div style="text-align:center;margin-top:12px;font-size:0.75rem;color:#999;">
   Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}
 </div>
@@ -783,13 +784,18 @@ elif pagina == "📝 Contas do Mês":
         st.info("Crie o primeiro mês acima para começar.")
         st.stop()
 
-    # Selecionar mês
+    # Selecionar mês — persiste ao navegar entre páginas
     opcoes_mes = {m["id"]: nome_mes(m["ano"], m["mes"]) for m in meses}
+    ids_disponiveis = list(opcoes_mes.keys())
+    _mes_salvo = st.session_state.get("_mes_selecionado")
+    idx_default = ids_disponiveis.index(_mes_salvo) if _mes_salvo in ids_disponiveis else 0
     mes_selecionado = st.selectbox(
         "Selecione o mês",
-        options=list(opcoes_mes.keys()),
+        options=ids_disponiveis,
         format_func=lambda x: opcoes_mes[x],
+        index=idx_default,
     )
+    st.session_state["_mes_selecionado"] = mes_selecionado
 
     m = db.obter_mes(mes_selecionado)
     totais = db.totais_mes(mes_selecionado)
@@ -810,6 +816,18 @@ elif pagina == "📝 Contas do Mês":
         devolver = totais.get("desp_nina", 0) + totais.get("conta_fixa", 0) + totais.get("parcelada", 0) + totais.get("extras_nino", 0) + pgtos_dividas_total
         creditos = totais.get("devedor_nina", 0)
         metric_card("Líquido Nina", devolver + creditos, "green" if devolver + creditos >= 0 else "red")
+
+    # Observações do mês
+    obs_atual = m["observacoes"] or ""
+    nova_obs = st.text_input(
+        "📝 Observações do mês (opcional)",
+        value=obs_atual,
+        placeholder="Ex: Mês de férias, aniversário, despesa extra pontual...",
+        key=f"obs_mes_{mes_selecionado}",
+    )
+    if nova_obs != obs_atual:
+        db.atualizar_observacoes_mes(mes_selecionado, nova_obs)
+        st.rerun()
 
     st.divider()
 
@@ -1225,57 +1243,98 @@ elif pagina == "📊 Histórico":
 # 📦 PARCELAMENTOS
 # ═══════════════════════════════════════════════════════════════════════════
 elif pagina == "📦 Parcelamentos":
-    st.header("📦 Parcelamentos Ativos")
+    st.header("📦 Parcelamentos")
 
-    parcelas = db.listar_parcelamentos(ativos=True)
+    tab_ativos, tab_fin = st.tabs(["✅ Ativos", "🏁 Finalizados"])
 
-    with st.expander("➕ Novo Parcelamento"):
-        with st.form("add_parc", clear_on_submit=True):
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                desc_p = st.text_input("Descrição")
-            with c2:
-                val_p = st.number_input("Valor da Parcela (R$)", min_value=0.0, step=10.0)
-            with c3:
-                num_p = st.number_input("Nº de Parcelas", min_value=1, value=10, step=1)
-            c4, c5 = st.columns(2)
-            with c4:
-                parc_atual = st.number_input("Parcela Atual", min_value=1, value=1, step=1)
-            if st.form_submit_button("Adicionar", type="primary"):
-                if desc_p:
-                    db.adicionar_parcelamento(desc_p, val_p, int(num_p), int(parc_atual))
-                    st.rerun()
+    with tab_ativos:
+        parcelas = db.listar_parcelamentos(ativos=True)
 
-    if not parcelas:
-        st.info("Nenhum parcelamento ativo.")
-        st.stop()
+        with st.expander("➕ Novo Parcelamento"):
+            with st.form("add_parc", clear_on_submit=True):
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    desc_p = st.text_input("Descrição")
+                with c2:
+                    val_p = st.number_input("Valor da Parcela (R$)", min_value=0.0, step=10.0)
+                with c3:
+                    num_p = st.number_input("Nº de Parcelas", min_value=1, value=10, step=1)
+                c4, c5 = st.columns(2)
+                with c4:
+                    parc_atual = st.number_input("Parcela Atual", min_value=1, value=1, step=1)
+                if st.form_submit_button("Adicionar", type="primary"):
+                    if desc_p:
+                        db.adicionar_parcelamento(desc_p, val_p, int(num_p), int(parc_atual))
+                        st.rerun()
 
-    total_parcelas = sum(p["valor_parcela"] for p in parcelas)
-    metric_card("Total Mensal em Parcelas", total_parcelas, "orange")
+        if not parcelas:
+            st.info("Nenhum parcelamento ativo.")
+        else:
+            total_parcelas = sum(p["valor_parcela"] for p in parcelas)
+            metric_card("Total Mensal em Parcelas", total_parcelas, "orange")
 
-    st.divider()
+            # Botão para lançar todas as parcelas ativas no mês escolhido
+            meses_disp = db.listar_meses()
+            if meses_disp:
+                st.divider()
+                st.markdown("**📅 Lançar parcelas ativas em um mês:**")
+                lc1, lc2 = st.columns([3, 1])
+                opcoes_mes_parc = {m["id"]: nome_mes(m["ano"], m["mes"]) for m in meses_disp}
+                _mes_padrao = st.session_state.get("_mes_selecionado")
+                idx_parc = list(opcoes_mes_parc.keys()).index(_mes_padrao) if _mes_padrao in opcoes_mes_parc else 0
+                with lc1:
+                    mes_parc = st.selectbox(
+                        "Selecione o mês destino",
+                        options=list(opcoes_mes_parc.keys()),
+                        format_func=lambda x: opcoes_mes_parc[x],
+                        index=idx_parc,
+                        key="sel_mes_parc",
+                    )
+                with lc2:
+                    st.write("")
+                    if st.button("📅 Lançar no Mês", type="primary", key="btn_lancar_parc"):
+                        for p in parcelas:
+                            db.adicionar_lancamento(mes_parc, "parcelada", p["descricao"], p["valor_parcela"])
+                        st.success(f"✅ {len(parcelas)} parcelamento(s) adicionado(s) em **{opcoes_mes_parc[mes_parc]}**.")
+                        st.session_state["_mes_selecionado"] = mes_parc
 
-    for p in parcelas:
-        progresso = p["parcela_atual"] / p["num_parcelas"]
-        c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 1, 1])
-        with c1:
-            st.markdown(f"**{p['descricao']}**")
-        with c2:
-            st.write(f"{fmt(p['valor_parcela'])}")
-        with c3:
-            st.progress(progresso, text=f"{p['parcela_atual']}/{p['num_parcelas']}")
-        with c4:
-            if st.button("➡️", key=f"pa_{p['id']}", help="Avançar parcela"):
-                nova = min(p["parcela_atual"] + 1, p["num_parcelas"])
-                db.atualizar_parcelamento(p["id"], p["descricao"], p["valor_parcela"],
-                                          p["num_parcelas"], nova)
-                if nova >= p["num_parcelas"]:
-                    db.finalizar_parcelamento(p["id"])
-                st.rerun()
-        with c5:
-            if st.button("✅", key=f"pf_{p['id']}", help="Finalizar"):
-                db.finalizar_parcelamento(p["id"])
-                st.rerun()
+            st.divider()
+            for p in parcelas:
+                progresso = p["parcela_atual"] / p["num_parcelas"]
+                c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 1, 1])
+                with c1:
+                    st.markdown(f"**{p['descricao']}**")
+                with c2:
+                    st.write(f"{fmt(p['valor_parcela'])}")
+                with c3:
+                    st.progress(progresso, text=f"{p['parcela_atual']}/{p['num_parcelas']}")
+                with c4:
+                    if st.button("➡️", key=f"pa_{p['id']}", help="Avançar parcela"):
+                        nova = min(p["parcela_atual"] + 1, p["num_parcelas"])
+                        db.atualizar_parcelamento(p["id"], p["descricao"], p["valor_parcela"],
+                                                  p["num_parcelas"], nova)
+                        if nova >= p["num_parcelas"]:
+                            db.finalizar_parcelamento(p["id"])
+                        st.rerun()
+                with c5:
+                    if st.button("✅", key=f"pf_{p['id']}", help="Finalizar"):
+                        db.finalizar_parcelamento(p["id"])
+                        st.rerun()
+
+    with tab_fin:
+        finalizados = [p for p in db.listar_parcelamentos(ativos=False) if not p["ativo"]]
+        if not finalizados:
+            st.info("Nenhum parcelamento finalizado ainda.")
+        else:
+            st.caption(f"{len(finalizados)} parcelamento(s) concluído(s).")
+            for p in finalizados:
+                c1, c2, c3 = st.columns([4, 2, 2])
+                with c1:
+                    st.markdown(f"~~{p['descricao']}~~")
+                with c2:
+                    st.write(fmt(p["valor_parcela"]))
+                with c3:
+                    st.write(f"{p['num_parcelas']}/{p['num_parcelas']} parcelas")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
