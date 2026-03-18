@@ -493,6 +493,11 @@ def _resumo_viagem_html(viagem_id) -> str:
     v = db.obter_viagem(viagem_id)
     titulo = v["nome"].upper()
     data_str = v["data_viagem"] or ""
+    if data_str:
+        try:
+            data_str = datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+        except ValueError:
+            pass
     totais_v = db.totais_viagem(viagem_id)
     total_v = db.total_viagem(viagem_id)
     total_nina = db.total_nina_viagem(viagem_id)
@@ -993,7 +998,7 @@ elif pagina == "✈️ Viagens / Eventos":
             with c1:
                 nome_v = st.text_input("Nome (ex: Birigui 18-07)")
             with c2:
-                data_v = st.date_input("Data", value=datetime.now())
+                data_v = st.date_input("Data", value=datetime.now(), format="DD/MM/YYYY")
             with c3:
                 opcoes_mes_v = {0: "— Nenhum —"}
                 for m in meses:
@@ -1268,20 +1273,24 @@ elif pagina == "📥 Importar / Exportar":
 
     # ── ABA IMPORTAR PLANILHA ORIGINAL ──────────────────────────────────────
     with tab_imp:
-        st.caption("Importa dados da planilha 'PLANEJAMENTO APOSENTADORIA.xlsx' (importação inicial).")
+        st.caption(
+            "Selecione o arquivo Excel para importar (ex: 'PLANEJAMENTO APOSENTADORIA.xlsx'). "
+            "Útil para restaurar dados a partir da planilha original quando o backup por e-mail não for suficiente."
+        )
         st.warning("⚠️ A importação adicionará dados. Execute apenas uma vez para evitar duplicatas.")
 
-        if st.button("🚀 Importar Planilha", type="primary", key="btn_imp_orig"):
+        arquivo_upload = st.file_uploader(
+            "Selecione o arquivo Excel (.xlsx)",
+            type=["xlsx"],
+            key="uploader_imp_orig",
+        )
+
+        if st.button("🚀 Importar Planilha", type="primary", key="btn_imp_orig",
+                     disabled=arquivo_upload is None):
             import openpyxl as _openpyxl
-            import os as _os
+            import io as _io
 
-            arquivo = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
-                                    "PLANEJAMENTO APOSENTADORIA.xlsx")
-            if not _os.path.exists(arquivo):
-                st.error("Arquivo 'PLANEJAMENTO APOSENTADORIA.xlsx' não encontrado na pasta do app.")
-                st.stop()
-
-            wb = _openpyxl.load_workbook(arquivo, data_only=True)
+            wb = _openpyxl.load_workbook(_io.BytesIO(arquivo_upload.read()), data_only=True)
             log = []
 
             ws_pl = wb["Planilha2"]
