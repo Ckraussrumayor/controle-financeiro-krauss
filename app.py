@@ -1396,6 +1396,12 @@ elif pagina == "📥 Importar / Exportar":
             st.success("Importação concluída!")
             for item in log:
                 st.write(item)
+            st.info(
+                "📧 **Backup automático garantido:** ao clicar em **Encerrar Sessão**, "
+                "o app detectará que os dados mudaram (comparação por hash) e enviará "
+                "automaticamente um novo backup por e-mail, sobrescrevendo o anterior. "
+                "Assim você poderá restaurar esta versão importada no futuro."
+            )
 
     # ── ABA RESTAURAR DO E-MAIL ──────────────────────────────────────────────
     with tab_email:
