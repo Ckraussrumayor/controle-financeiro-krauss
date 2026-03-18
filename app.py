@@ -481,7 +481,7 @@ border:2px solid #333;border-radius:8px;padding:20px;max-width:520px;margin:0 au
   <td style="padding:6px 8px;text-align:right;">{fmt(liquido_nina)}</td>
 </tr>
 </table>
-{f'<div style="margin-top:10px;padding:8px 10px;background:#f5f5f5;border-radius:6px;font-size:0.85rem;color:#555;"><strong>\U0001f4dd Obs:</strong> {m["observacoes"]}</div>' if m.get("observacoes") else ''}
+{f'<div style="margin-top:10px;padding:8px 10px;background:#f5f5f5;border-radius:6px;font-size:0.85rem;color:#555;"><strong>\U0001f4dd Obs:</strong> {m["observacoes"]}</div>' if m["observacoes"] else ''}
 <div style="text-align:center;margin-top:12px;font-size:0.75rem;color:#999;">
   Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}
 </div>
