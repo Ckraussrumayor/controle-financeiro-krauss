@@ -597,7 +597,7 @@ with st.sidebar:
         st.session_state.clear()
         st.info("Sessão encerrada. Recarregue a página para entrar novamente.")
         st.stop()
-    st.caption("v1.0 • Controle Financeiro")
+    st.caption(f"v1.0 • Controle Financeiro • {datetime.now().strftime('%d/%m/%Y')}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1157,6 +1157,21 @@ elif pagina == "✈️ Viagens / Eventos":
             st.session_state["mostrar_resumo_viagem"] = viagem_sel
     with col_av:
         with st.expander("⚠️ Ações"):
+            # ── Editar nome e data ──
+            _data_edit = datetime.strptime(v_info["data_viagem"], "%Y-%m-%d") if v_info["data_viagem"] else datetime.now()
+            col_en, col_ed = st.columns(2)
+            with col_en:
+                novo_nome_v = st.text_input("Nome da viagem", value=v_info["nome"], key=f"edit_nome_v_{viagem_sel}")
+            with col_ed:
+                nova_data_v = st.date_input("Data", value=_data_edit, format="DD/MM/YYYY", key=f"edit_data_v_{viagem_sel}")
+            if st.button("💾 Salvar nome/data", key=f"salvar_nome_data_v_{viagem_sel}"):
+                if novo_nome_v:
+                    db.atualizar_viagem(viagem_sel, novo_nome_v, str(nova_data_v), v_info["mes_id"])
+                    st.rerun()
+                else:
+                    st.warning("O nome não pode ficar em branco.")
+            st.divider()
+            # ── Vincular ao mês ──
             meses_opcoes_edit = {0: "— Nenhum —"}
             for m_item in meses:
                 meses_opcoes_edit[m_item["id"]] = nome_mes(m_item["ano"], m_item["mes"])
