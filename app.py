@@ -575,6 +575,9 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     st.divider()
+    # Indicador de backup pendente
+    if st.session_state.get("_sync_hash") and db.db_hash() != st.session_state.get("_sync_hash", ""):
+        st.warning("⚠️ Dados alterados\nEncerre a sessão para enviar o backup.", icon="☁️")
     if st.button("⏹️ Encerrar Sessão", use_container_width=True):
         # Backup final antes de fechar
         cfg_exit = email_utils.get_config()
@@ -675,9 +678,11 @@ elif pagina == "📋 Planejamento Mensal":
                     with c2:
                         novo_val = st.number_input("Valor", value=float(f["valor"]), step=50.0, key=f"rv_{f['id']}", label_visibility="collapsed")
                     with c3:
-                        if st.button("🗑️", key=f"rd_{f['id']}"):
-                            db.remover_fonte_renda(f["id"])
-                            st.rerun()
+                        with st.popover("🗑️"):
+                            st.caption(f"Excluir **{f['nome']}**?")
+                            if st.button("✅ Confirmar", key=f"rd_ok_{f['id']}", type="primary"):
+                                db.remover_fonte_renda(f["id"])
+                                st.rerun()
                     if novo_nome != f["nome"] or novo_val != f["valor"]:
                         db.atualizar_fonte_renda(f["id"], novo_nome, novo_val)
                         st.rerun()
@@ -721,9 +726,11 @@ elif pagina == "📋 Planejamento Mensal":
                     with c3:
                         novo_det = st.text_input("Detalhes", d["detalhes"] or "", key=f"dd_{d['id']}", label_visibility="collapsed", placeholder="detalhes...")
                     with c4:
-                        if st.button("🗑️", key=f"dx_{d['id']}"):
-                            db.remover_despesa_planejamento(d["id"])
-                            st.rerun()
+                        with st.popover("🗑️"):
+                            st.caption(f"Excluir **{d['nome']}**?")
+                            if st.button("✅ Confirmar", key=f"dx_ok_{d['id']}", type="primary"):
+                                db.remover_despesa_planejamento(d["id"])
+                                st.rerun()
                     if novo_nome != d["nome"] or novo_val != d["valor"] or (novo_det or None) != d["detalhes"]:
                         db.atualizar_despesa_planejamento(d["id"], novo_nome, novo_val, novo_det or None)
                         st.rerun()
@@ -838,9 +845,11 @@ elif pagina == "📝 Contas do Mês":
                     with c2:
                         st.text(fmt(pg["valor"]))
                     with c3:
-                        if st.button("🗑️", key=f"pgd_{pg['id']}"):
-                            db.remover_pagamento_divida(pg["id"])
-                            st.rerun()
+                        with st.popover("🗑️"):
+                            st.caption(f"Excluir pagamento de **{pg['divida_desc']}**?")
+                            if st.button("✅ Confirmar", key=f"pgd_ok_{pg['id']}", type="primary"):
+                                db.remover_pagamento_divida(pg["id"])
+                                st.rerun()
 
             # --- Selecionar dívida e pagar ---
             dividas_abertas = db.listar_dividas(apenas_abertas=True)
@@ -876,9 +885,11 @@ elif pagina == "📝 Contas do Mês":
                     with c2:
                         novo_val = st.number_input("Val", value=float(l["valor"]), step=10.0, key=f"lv_{l['id']}", label_visibility="collapsed")
                     with c3:
-                        if st.button("🗑️", key=f"lx_{l['id']}"):
-                            db.remover_lancamento(l["id"])
-                            st.rerun()
+                        with st.popover("🗑️"):
+                            st.caption(f"Excluir **{l['descricao']}**?")
+                            if st.button("✅ Confirmar", key=f"lx_ok_{l['id']}", type="primary"):
+                                db.remover_lancamento(l["id"])
+                                st.rerun()
                     if novo_desc != l["descricao"] or novo_val != l["valor"]:
                         db.atualizar_lancamento(l["id"], novo_desc, novo_val)
                         st.rerun()
@@ -917,9 +928,11 @@ elif pagina == "📝 Contas do Mês":
                         with c2:
                             st.text(f"Total: {fmt(d['valor_total'])}")
                         with c3:
-                            if st.button("🗑️", key=f"dd_{d['id']}"):
-                                db.remover_divida(d["id"])
-                                st.rerun()
+                            with st.popover("🗑️"):
+                                st.caption(f"Excluir dívida **{d['descricao']}**?")
+                                if st.button("✅ Confirmar", key=f"dd_ok_{d['id']}", type="primary"):
+                                    db.remover_divida(d["id"])
+                                    st.rerun()
 
                 with st.form(f"nova_divida_{mes_selecionado}", clear_on_submit=True):
                     st.caption("Cadastrar nova dívida:")
@@ -951,9 +964,11 @@ elif pagina == "📝 Contas do Mês":
                 with c2:
                     novo_val = st.number_input("Val", value=float(l["valor"]), step=10.0, key=f"lv_{l['id']}", label_visibility="collapsed")
                 with c3:
-                    if st.button("🗑️", key=f"lx_{l['id']}"):
-                        db.remover_lancamento(l["id"])
-                        st.rerun()
+                    with st.popover("🗑️"):
+                        st.caption(f"Excluir **{l['descricao']}**?")
+                        if st.button("✅ Confirmar", key=f"lx_ok_{l['id']}", type="primary"):
+                            db.remover_lancamento(l["id"])
+                            st.rerun()
                 if novo_desc != l["descricao"] or novo_val != l["valor"]:
                     db.atualizar_lancamento(l["id"], novo_desc, novo_val)
                     st.rerun()
@@ -986,9 +1001,20 @@ elif pagina == "📝 Contas do Mês":
             st.session_state["mostrar_resumo_mes"] = mes_selecionado
     with col_acoes:
         with st.expander("⚠️ Ações"):
-            if st.button("🗑️ Excluir este mês e todos os lançamentos", type="secondary"):
-                db.remover_mes(mes_selecionado)
-                st.rerun()
+            if st.session_state.get("_confirm_del_mes") == mes_selecionado:
+                st.error(f"⚠️ Excluir **{opcoes_mes[mes_selecionado]}** e todos os seus lançamentos? Esta ação não pode ser desfeita.")
+                cm1, cm2 = st.columns(2)
+                if cm1.button("✅ Sim, excluir", key="del_mes_ok", type="primary"):
+                    db.remover_mes(mes_selecionado)
+                    del st.session_state["_confirm_del_mes"]
+                    st.rerun()
+                if cm2.button("❌ Cancelar", key="del_mes_no"):
+                    del st.session_state["_confirm_del_mes"]
+                    st.rerun()
+            else:
+                if st.button("🗑️ Excluir este mês e todos os lançamentos", type="secondary"):
+                    st.session_state["_confirm_del_mes"] = mes_selecionado
+                    st.rerun()
 
     if st.session_state.get("mostrar_resumo_mes") == mes_selecionado:
         st.markdown("---")
@@ -1075,9 +1101,11 @@ elif pagina == "✈️ Viagens / Eventos":
                 with c3:
                     nova_nina = st.checkbox("Nina", value=bool(l["pago_por_nina"]), key=f"vn_{l['id']}")
                 with c4:
-                    if st.button("🗑️", key=f"vx_{l['id']}"):
-                        db.remover_lancamento_viagem(l["id"])
-                        st.rerun()
+                    with st.popover("🗑️"):
+                        st.caption(f"Excluir **{l['descricao']}**?")
+                        if st.button("✅ Confirmar", key=f"vx_ok_{l['id']}", type="primary"):
+                            db.remover_lancamento_viagem(l["id"])
+                            st.rerun()
                 if novo_desc != l["descricao"] or novo_val != l["valor"] or nova_nina != bool(l["pago_por_nina"]):
                     db.atualizar_lancamento_viagem(l["id"], novo_desc, novo_val, nova_nina)
                     st.rerun()
@@ -1123,9 +1151,20 @@ elif pagina == "✈️ Viagens / Eventos":
                                     novo_mes_link if novo_mes_link else None)
                 st.rerun()
 
-            if st.button("🗑️ Excluir esta viagem", type="secondary"):
-                db.remover_viagem(viagem_sel)
-                st.rerun()
+            if st.session_state.get("_confirm_del_viagem") == viagem_sel:
+                st.error(f"⚠️ Excluir a viagem **{v_info['nome']}** e todos os seus lançamentos? Esta ação não pode ser desfeita.")
+                cv1, cv2 = st.columns(2)
+                if cv1.button("✅ Sim, excluir", key="del_viagem_ok", type="primary"):
+                    db.remover_viagem(viagem_sel)
+                    del st.session_state["_confirm_del_viagem"]
+                    st.rerun()
+                if cv2.button("❌ Cancelar", key="del_viagem_no"):
+                    del st.session_state["_confirm_del_viagem"]
+                    st.rerun()
+            else:
+                if st.button("🗑️ Excluir esta viagem", type="secondary"):
+                    st.session_state["_confirm_del_viagem"] = viagem_sel
+                    st.rerun()
 
     if st.session_state.get("mostrar_resumo_viagem") == viagem_sel:
         st.markdown("---")
