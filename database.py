@@ -423,6 +423,16 @@ def finalizar_parcelamento(id_):
         conn.execute("UPDATE parcelamentos SET ativo=0 WHERE id=?", (id_,))
 
 
+def reativar_parcelamento(id_):
+    with get_conn() as conn:
+        conn.execute("UPDATE parcelamentos SET ativo=1 WHERE id=?", (id_,))
+
+
+def remover_parcelamento(id_):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM parcelamentos WHERE id=?", (id_,))
+
+
 # ---- DÍVIDAS NINO ----
 
 def listar_dividas(apenas_abertas=True):

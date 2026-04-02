@@ -15,6 +15,7 @@ def _fatal(msg: str, exc: Exception):
 try:
     import pandas as pd
     import calendar
+    import re
     from datetime import datetime
 except Exception as _e:
     _fatal("Erro ao importar dependências padrão", _e)
@@ -800,7 +801,32 @@ elif pagina == "📝 Contas do Mês":
         if st.button("✅ Criar Mês", type="primary"):
             _novo_m = db.criar_mes(int(novo_ano), novo_mes)
             if _copiar and _mes_origem_id and _cats_sel:
-                db.copiar_lancamentos_mes(_mes_origem_id, _novo_m["id"], _cats_sel)
+                _m_orig_info = db.obter_mes(_mes_origem_id)
+                _nome_orig_up = MESES_PT[_m_orig_info["mes"]].upper()
+                _nome_dest_up = MESES_PT[novo_mes].upper()
+                _parc_ativos_map = {p["descricao"]: p for p in db.listar_parcelamentos(ativos=True)}
+                _parc_avancados = set()
+
+                for _cat in _cats_sel:
+                    for _l in db.listar_lancamentos(_mes_origem_id, _cat):
+                        _desc = _l["descricao"]
+                        if _cat == "parcelada":
+                            # Remove numeração anterior (ex: "Seguro (3/10)" → "Seguro")
+                            _base = re.sub(r'\s*\(\d+/\d+\)$', '', _desc).strip()
+                            _pm = _parc_ativos_map.get(_base)
+                            if _pm and _pm["id"] not in _parc_avancados:
+                                _prox = min(_pm["parcela_atual"] + 1, _pm["num_parcelas"])
+                                _desc = f"{_pm['descricao']} ({_prox}/{_pm['num_parcelas']})"
+                                db.atualizar_parcelamento(
+                                    _pm["id"], _pm["descricao"],
+                                    _pm["valor_parcela"], _pm["num_parcelas"], _prox
+                                )
+                                if _prox >= _pm["num_parcelas"]:
+                                    db.finalizar_parcelamento(_pm["id"])
+                                _parc_avancados.add(_pm["id"])
+                        elif _cat == "devedor_nina":
+                            _desc = _desc.replace(_nome_orig_up, _nome_dest_up)
+                        db.adicionar_lancamento(_novo_m["id"], _cat, _desc, _l["valor"])
             st.rerun()
 
     if not meses:
@@ -1332,14 +1358,20 @@ elif pagina == "📦 Parcelamentos":
                     st.write("")
                     if st.button("📅 Lançar no Mês", type="primary", key="btn_lancar_parc"):
                         for p in parcelas:
-                            db.adicionar_lancamento(mes_parc, "parcelada", p["descricao"], p["valor_parcela"])
+                            proxima = min(p["parcela_atual"] + 1, p["num_parcelas"])
+                            desc_lanc = f"{p['descricao']} ({proxima}/{p['num_parcelas']})"
+                            db.adicionar_lancamento(mes_parc, "parcelada", desc_lanc, p["valor_parcela"])
+                            db.atualizar_parcelamento(p["id"], p["descricao"], p["valor_parcela"],
+                                                      p["num_parcelas"], proxima)
+                            if proxima >= p["num_parcelas"]:
+                                db.finalizar_parcelamento(p["id"])
                         st.success(f"✅ {len(parcelas)} parcelamento(s) adicionado(s) em **{opcoes_mes_parc[mes_parc]}**.")
                         st.session_state["_mes_selecionado"] = mes_parc
 
             st.divider()
             for p in parcelas:
                 progresso = p["parcela_atual"] / p["num_parcelas"]
-                c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 1, 1])
+                c1, c2, c3, c4, c5, c6 = st.columns([3, 2, 2, 1, 1, 1])
                 with c1:
                     st.markdown(f"**{p['descricao']}**")
                 with c2:
@@ -1347,6 +1379,13 @@ elif pagina == "📦 Parcelamentos":
                 with c3:
                     st.progress(progresso, text=f"{p['parcela_atual']}/{p['num_parcelas']}")
                 with c4:
+                    if st.button("⬅️", key=f"pb_{p['id']}", help="Voltar parcela",
+                                 disabled=p["parcela_atual"] <= 1):
+                        nova = max(p["parcela_atual"] - 1, 1)
+                        db.atualizar_parcelamento(p["id"], p["descricao"], p["valor_parcela"],
+                                                  p["num_parcelas"], nova)
+                        st.rerun()
+                with c5:
                     if st.button("➡️", key=f"pa_{p['id']}", help="Avançar parcela"):
                         nova = min(p["parcela_atual"] + 1, p["num_parcelas"])
                         db.atualizar_parcelamento(p["id"], p["descricao"], p["valor_parcela"],
@@ -1354,7 +1393,7 @@ elif pagina == "📦 Parcelamentos":
                         if nova >= p["num_parcelas"]:
                             db.finalizar_parcelamento(p["id"])
                         st.rerun()
-                with c5:
+                with c6:
                     if st.button("✅", key=f"pf_{p['id']}", help="Finalizar"):
                         db.finalizar_parcelamento(p["id"])
                         st.rerun()
@@ -1366,13 +1405,41 @@ elif pagina == "📦 Parcelamentos":
         else:
             st.caption(f"{len(finalizados)} parcelamento(s) concluído(s).")
             for p in finalizados:
-                c1, c2, c3 = st.columns([4, 2, 2])
+                c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 1, 1])
                 with c1:
                     st.markdown(f"~~{p['descricao']}~~")
                 with c2:
                     st.write(fmt(p["valor_parcela"]))
                 with c3:
                     st.write(f"{p['num_parcelas']}/{p['num_parcelas']} parcelas")
+                with c4:
+                    if st.button("🔄", key=f"pr_{p['id']}", help="Reativar parcelamento"):
+                        db.reativar_parcelamento(p["id"])
+                        st.rerun()
+                with c5:
+                    with st.popover("🗑️", help="Excluir parcelamento"):
+                        st.caption(f"Excluir **{p['descricao']}**?")
+                        if st.button("✅ Confirmar", key=f"px_ok_{p['id']}", type="primary"):
+                            db.remover_parcelamento(p["id"])
+                            st.rerun()
+
+            st.divider()
+            if st.button("🗑️ Limpar todos os finalizados", type="secondary", key="btn_limpar_fin"):
+                st.session_state["_confirm_limpar_fin"] = True
+                st.rerun()
+            if st.session_state.get("_confirm_limpar_fin"):
+                st.error(f"⚠️ Excluir todos os {len(finalizados)} parcelamento(s) finalizado(s)? Esta ação não pode ser desfeita.")
+                cf1, cf2 = st.columns(2)
+                with cf1:
+                    if st.button("✅ Sim, excluir todos", key="limpar_fin_ok", type="primary"):
+                        for p in finalizados:
+                            db.remover_parcelamento(p["id"])
+                        st.session_state.pop("_confirm_limpar_fin", None)
+                        st.rerun()
+                with cf2:
+                    if st.button("❌ Cancelar", key="limpar_fin_no"):
+                        st.session_state.pop("_confirm_limpar_fin", None)
+                        st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
