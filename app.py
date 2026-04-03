@@ -714,8 +714,19 @@ if pagina == "🏠 Visão Geral":
 
         # Gráfico
         if len(dados_hist) > 1:
-            chart_df = pd.DataFrame(dados_hist).set_index("Mês")
-            st.bar_chart(chart_df, color="#667eea")
+            import altair as alt
+            _df_bar = pd.DataFrame(dados_hist)
+            _chart_bar = (
+                alt.Chart(_df_bar)
+                .mark_bar(color="#667eea")
+                .encode(
+                    x=alt.X("Mês:N", sort=None, axis=alt.Axis(labelAngle=-45, title=None)),
+                    y=alt.Y("Total Acerto:Q", axis=alt.Axis(title="R$")),
+                    tooltip=["Mês", alt.Tooltip("Total Acerto", format=",.2f")],
+                )
+                .properties(height=320)
+            )
+            st.altair_chart(_chart_bar, use_container_width=True)
 
         # ── Dashboard consolidado ──
         st.divider()
@@ -756,8 +767,21 @@ if pagina == "🏠 Visão Geral":
                     "Planejado": total_d,
                     "Real": todos_totais[i],
                 })
-            df_comp = pd.DataFrame(comp_data).set_index("Mês")
-            st.bar_chart(df_comp)
+            import altair as alt
+            _df_comp_long = pd.DataFrame(comp_data).melt(id_vars="Mês", var_name="Tipo", value_name="Valor")
+            _chart_comp = (
+                alt.Chart(_df_comp_long)
+                .mark_bar()
+                .encode(
+                    x=alt.X("Mês:N", sort=None, axis=alt.Axis(labelAngle=-45, title=None)),
+                    y=alt.Y("Valor:Q", axis=alt.Axis(title="R$")),
+                    color=alt.Color("Tipo:N", scale=alt.Scale(domain=["Planejado", "Real"], range=["#667eea", "#f7971e"])),
+                    xOffset="Tipo:N",
+                    tooltip=["Mês", "Tipo", alt.Tooltip("Valor", format=",.2f")],
+                )
+                .properties(height=320)
+            )
+            st.altair_chart(_chart_comp, use_container_width=True)
     else:
         st.info("Nenhum mês registrado ainda. Vá em **Contas do Mês** para criar o primeiro.")
 
