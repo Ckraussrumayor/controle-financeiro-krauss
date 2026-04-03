@@ -262,6 +262,13 @@ def _gerar_excel_bytes() -> bytes:
                         cat_dict_exp.get(l["categoria"], l["categoria"]),
                         l["descricao"], l["valor"]])
 
+    ws3b = wb_out.create_sheet("Meses Meta")
+    _hdr(ws3b, ["Ano", "Mês", "Pago", "Observações"])
+    for m in db.listar_meses():
+        _pago_m = m["pago"] if "pago" in m.keys() else 0
+        _obs_m  = m["observacoes"] if "observacoes" in m.keys() else None
+        ws3b.append([m["ano"], MESES_PT[m["mes"]], "Sim" if _pago_m else "Não", _obs_m])
+
     ws4 = wb_out.create_sheet("Viagens")
     _hdr(ws4, ["Viagem", "Data", "Categoria", "Descrição", "Valor", "Pago por Nina"])
     cat_dict_v_exp = dict(db.CATEGORIAS_VIAGEM)
@@ -271,6 +278,13 @@ def _gerar_excel_bytes() -> bytes:
                         cat_dict_v_exp.get(l["categoria"], l["categoria"]),
                         l["descricao"], l["valor"],
                         "Sim" if l["pago_por_nina"] else "Não"])
+
+    ws4b = wb_out.create_sheet("Viagens Meta")
+    _hdr(ws4b, ["Viagem", "Pago", "Observações"])
+    for v in db.listar_viagens():
+        _pago_v2 = v["pago"] if "pago" in v.keys() else 0
+        _obs_v2  = v["observacoes"] if "observacoes" in v.keys() else None
+        ws4b.append([v["nome"], "Sim" if _pago_v2 else "Não", _obs_v2])
 
     ws5 = wb_out.create_sheet("Parcelamentos")
     _hdr(ws5, ["Descrição", "Valor Parcela", "Nº Parcelas", "Parcela Atual", "Ativo"])
@@ -343,6 +357,22 @@ def _importar_backup_workbook(wb) -> list:
                                     str(desc), float(valor))
         log.append("✅ Lançamentos mensais")
 
+    # Restaurar flags pago e observações dos meses
+    if "Meses Meta" in wb.sheetnames:
+        for row in wb["Meses Meta"].iter_rows(min_row=2, values_only=True):
+            ano, mes_nome, pago_str, obs = (list(row) + [None] * 4)[:4]
+            if not ano or not mes_nome:
+                continue
+            mes_num = mes_num_map.get(mes_nome)
+            if not mes_num:
+                continue
+            m_meta = db.criar_mes(int(ano), mes_num)
+            if pago_str == "Sim":
+                db.marcar_mes_pago(m_meta["id"], 1)
+            if obs:
+                db.atualizar_observacoes_mes(m_meta["id"], str(obs))
+        log.append("✅ Flags de meses (pago/obs)")
+
     if "Viagens" in wb.sheetnames:
         viagens_cache = {}
         for row in wb["Viagens"].iter_rows(min_row=2, values_only=True):
@@ -362,6 +392,23 @@ def _importar_backup_workbook(wb) -> list:
                     str(desc), float(valor), nina_str == "Sim"
                 )
         log.append("✅ Viagens")
+
+    # Restaurar flags pago e observações das viagens
+    if "Viagens Meta" in wb.sheetnames:
+        todas_v = db.listar_viagens()
+        viagens_nome_map = {v["nome"]: v["id"] for v in todas_v}
+        for row in wb["Viagens Meta"].iter_rows(min_row=2, values_only=True):
+            v_nome, pago_str, obs = (list(row) + [None] * 3)[:3]
+            if not v_nome:
+                continue
+            vid = viagens_nome_map.get(v_nome)
+            if vid is None:
+                continue
+            if pago_str == "Sim":
+                db.marcar_viagem_paga(vid, 1)
+            if obs:
+                db.atualizar_observacoes_viagem(vid, str(obs))
+        log.append("✅ Flags de viagens (pago/obs)")
 
     if "Parcelamentos" in wb.sheetnames:
         for row in wb["Parcelamentos"].iter_rows(min_row=2, values_only=True):
