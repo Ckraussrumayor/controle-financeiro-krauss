@@ -638,8 +638,8 @@ with st.sidebar:
     st.divider()
     # Indicador de backup pendente
     if st.session_state.get("_sync_hash") and db.db_hash() != st.session_state.get("_sync_hash", ""):
-        st.warning("⚠️ Dados alterados\nEncerre a sessão para enviar o backup.", icon="☁️")
-    if st.button("⏹️ Encerrar Sessão", use_container_width=True):
+        st.warning("⚠️ Dados alterados. Encerre a sessão para enviar o backup.")
+    if st.button("🚪 Encerrar Sessão", use_container_width=True):
         # Backup final antes de fechar
         cfg_exit = email_utils.get_config()
         _backup_ok = True
@@ -652,7 +652,7 @@ with st.sidebar:
                     fn = f"financeiro_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
                     email_utils.send_backup(excel_b, fn, cfg_exit)
                     email_utils.delete_old_backups(cfg_exit)
-                    st.toast("☁️ Backup final enviado", icon="✅")
+                    st.toast("✅ Backup final enviado!")
                 except Exception as _bk_err:
                     _backup_ok = False
                     st.session_state["_backup_fail"] = str(_bk_err)
