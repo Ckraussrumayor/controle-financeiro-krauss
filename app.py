@@ -856,7 +856,7 @@ elif pagina == "📝 Contas do Mês":
         st.markdown("""
         <style>
         section[data-testid="stMain"] > div {
-            background: linear-gradient(160deg,#e8f5e9 0%,#f1f8e9 100%) !important;
+            background: rgba(40, 167, 90, 0.06) !important;
         }
         </style>""", unsafe_allow_html=True)
         st.success("✅ **MÊS PAGO** — Acerto concluído. Edições desativadas.")
@@ -1176,7 +1176,7 @@ elif pagina == "✈️ Viagens / Eventos":
         st.markdown("""
         <style>
         section[data-testid="stMain"] > div {
-            background: linear-gradient(160deg,#e8f5e9 0%,#f1f8e9 100%) !important;
+            background: rgba(40, 167, 90, 0.06) !important;
         }
         </style>""", unsafe_allow_html=True)
         st.success("✅ **VIAGEM PAGA** — Acerto concluído. Edições desativadas.")
