@@ -835,7 +835,7 @@ elif pagina == "📝 Contas do Mês":
 
     # Selecionar mês — persiste ao navegar entre páginas
     opcoes_mes = {
-        m["id"]: nome_mes(m["ano"], m["mes"]) + (" ✅ Pago" if m["pago"] else "")
+        m["id"]: nome_mes(m["ano"], m["mes"]) + (" ✅ Pago" if ("pago" in m.keys() and m["pago"]) else "")
         for m in meses
     }
     ids_disponiveis = list(opcoes_mes.keys())
@@ -850,6 +850,25 @@ elif pagina == "📝 Contas do Mês":
     st.session_state["_mes_selecionado"] = mes_selecionado
 
     m = db.obter_mes(mes_selecionado)
+    _pago_mes = bool(m["pago"]) if m and "pago" in m.keys() else False
+
+    if _pago_mes:
+        st.markdown("""
+        <style>
+        section[data-testid="stMain"] > div {
+            background: linear-gradient(160deg,#e8f5e9 0%,#f1f8e9 100%) !important;
+        }
+        </style>""", unsafe_allow_html=True)
+        st.success("✅ **MÊS PAGO** — Acerto concluído. Edições desativadas.")
+        if st.button("🔓 Desmarcar como Pago", key="des_pago_mes"):
+            db.marcar_mes_pago(mes_selecionado, 0)
+            st.rerun()
+    else:
+        if st.button("✅ Marcar como Pago", key="marcar_pago_mes", type="secondary",
+                     help="Bloqueia edições e sinaliza o mês como acertado"):
+            db.marcar_mes_pago(mes_selecionado, 1)
+            st.rerun()
+
     totais = db.totais_mes(mes_selecionado)
     pgtos_dividas_total = db.total_pagamentos_mes(mes_selecionado)
 
@@ -876,8 +895,9 @@ elif pagina == "📝 Contas do Mês":
         value=obs_atual,
         placeholder="Ex: Mês de férias, aniversário, despesa extra pontual...",
         key=f"obs_mes_{mes_selecionado}",
+        disabled=_pago_mes,
     )
-    if nova_obs != obs_atual:
+    if not _pago_mes and nova_obs != obs_atual:
         db.atualizar_observacoes_mes(mes_selecionado, nova_obs)
         st.rerun()
 
@@ -1139,14 +1159,14 @@ elif pagina == "✈️ Viagens / Eventos":
 
     # Selecionar viagem
     opcoes_viagem = {
-        v["id"]: v["nome"] + (" ✅ Pago" if v["pago"] else "")
+        v["id"]: v["nome"] + (" ✅ Pago" if ("pago" in v.keys() and v["pago"]) else "")
         for v in viagens
     }
     viagem_sel = st.selectbox("Selecione a viagem", options=list(opcoes_viagem.keys()),
                               format_func=lambda x: opcoes_viagem[x])
 
     v_info = db.obter_viagem(viagem_sel)
-    _pago_v = bool(v_info["pago"])
+    _pago_v = bool(v_info["pago"]) if v_info and "pago" in v_info.keys() else False
     totais_v = db.totais_viagem(viagem_sel)
     total_v = db.total_viagem(viagem_sel)
     total_nina_v = db.total_nina_viagem(viagem_sel)
