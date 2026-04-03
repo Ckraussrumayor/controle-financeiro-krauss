@@ -16,9 +16,15 @@ try:
     import pandas as pd
     import calendar
     import re
+    import time
     from datetime import datetime
 except Exception as _e:
     _fatal("Erro ao importar dependências padrão", _e)
+
+# ─── Constantes de segurança ─────────────────────────────────────────────────
+_SESSION_TIMEOUT_MIN = 30       # minutos de inatividade para expirar sessão
+_MAX_LOGIN_ATTEMPTS  = 5        # tentativas antes de bloquear
+_LOGIN_BLOCK_SEC     = 60       # segundos de bloqueio após excesso de tentativas
 
 try:
     import database as db
@@ -49,8 +55,20 @@ except Exception as _e:
 
 # ─── Tela de Login ───────────────────────────────────────────────────────────
 
+def _check_session_timeout():
+    """Verifica se a sessão expirou por inatividade."""
+    if not st.session_state.get("_autenticado"):
+        return
+    last = st.session_state.get("_last_activity", 0)
+    if last and (time.time() - last) > _SESSION_TIMEOUT_MIN * 60:
+        st.session_state["_autenticado"] = False
+        st.session_state["_session_expired"] = True
+    st.session_state["_last_activity"] = time.time()
+
+
 def _tela_login():
     """Exibe tela de login. Retorna True se autenticado."""
+    _check_session_timeout()
     if st.session_state.get("_autenticado"):
         return True
 
@@ -61,20 +79,41 @@ def _tela_login():
         unsafe_allow_html=True,
     )
 
+    if st.session_state.pop("_session_expired", False):
+        st.warning("⏱️ Sessão expirada por inatividade. Faça login novamente.")
+
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if modo == "login":
+            # Rate limiting
+            _attempts = st.session_state.get("_login_attempts", 0)
+            _blocked_until = st.session_state.get("_login_blocked_until", 0)
+            _is_blocked = time.time() < _blocked_until
+            if _is_blocked:
+                _rest = int(_blocked_until - time.time())
+                st.error(f"🔒 Muitas tentativas. Aguarde {_rest}s.")
+
             with st.form("form_login"):
                 st.subheader("🔐 Login")
                 usuario = st.text_input("Usuário")
                 senha = st.text_input("Senha", type="password")
-                entrar = st.form_submit_button("Entrar", use_container_width=True)
-            if entrar:
+                entrar = st.form_submit_button("Entrar", use_container_width=True, disabled=_is_blocked)
+            if entrar and not _is_blocked:
                 if auth.verificar_login(usuario, senha):
                     st.session_state["_autenticado"] = True
+                    st.session_state["_last_activity"] = time.time()
+                    st.session_state["_login_attempts"] = 0
+                    st.session_state.pop("_login_blocked_until", None)
                     st.rerun()
                 else:
-                    st.error("Usuário ou senha incorretos.")
+                    _attempts += 1
+                    st.session_state["_login_attempts"] = _attempts
+                    if _attempts >= _MAX_LOGIN_ATTEMPTS:
+                        st.session_state["_login_blocked_until"] = time.time() + _LOGIN_BLOCK_SEC
+                        st.error(f"🔒 Limite de tentativas atingido. Bloqueado por {_LOGIN_BLOCK_SEC}s.")
+                    else:
+                        restantes = _MAX_LOGIN_ATTEMPTS - _attempts
+                        st.error(f"Usuário ou senha incorretos. ({restantes} tentativa(s) restante(s))")
 
             c1, c2 = st.columns(2)
             with c1:
@@ -147,18 +186,21 @@ def _auto_restore():
     if not email_utils.is_configured(cfg):
         st.session_state["_sync_restored"] = True
         st.session_state["_sync_hash"] = db.db_hash()
+        st.session_state["_restore_failed"] = "no_email"
         return
 
     try:
         excel_bytes, fname = email_utils.get_latest_backup(cfg)
-    except Exception:
+    except Exception as _ex:
         st.session_state["_sync_restored"] = True
         st.session_state["_sync_hash"] = db.db_hash()
+        st.session_state["_restore_failed"] = f"erro_imap: {_ex}"
         return
 
     if excel_bytes is None:
         st.session_state["_sync_restored"] = True
         st.session_state["_sync_hash"] = db.db_hash()
+        st.session_state["_restore_failed"] = "no_backup"
         return
 
     try:
@@ -167,8 +209,10 @@ def _auto_restore():
         wb_bk = openpyxl.load_workbook(io.BytesIO(excel_bytes), data_only=True)
         _importar_backup_workbook(wb_bk)
         st.toast(f"✅ Dados restaurados do backup: {fname}", icon="📧")
+        st.session_state.pop("_restore_failed", None)
     except Exception as e:
         st.toast(f"⚠️ Falha ao restaurar backup: {e}", icon="⚠️")
+        st.session_state["_restore_failed"] = f"erro_import: {e}"
 
     st.session_state["_sync_restored"] = True
     st.session_state["_sync_hash"] = db.db_hash()
@@ -378,6 +422,20 @@ def nome_mes(ano, mes):
 # ─── Executar auto-restore na inicialização da sessão ───────────────────────
 _auto_restore()
 
+# ─── Aviso persistente se auto-restore falhou e banco está vazio ────────────
+_restore_fail = st.session_state.get("_restore_failed")
+if _restore_fail and db.banco_vazio():
+    if _restore_fail == "no_email":
+        st.warning("⚠️ **Banco vazio** — E-mail de backup não configurado. Configure em 📥 Importar / Exportar → ⚙️ Config E-mail, ou importe um backup manualmente.")
+    elif _restore_fail == "no_backup":
+        st.warning("⚠️ **Banco vazio** — Nenhum backup encontrado no e-mail. Importe dados manualmente em 📥 Importar / Exportar.")
+    elif _restore_fail.startswith("erro_imap"):
+        st.error(f"⚠️ **Banco vazio** — Falha ao conectar ao e-mail para restaurar: `{_restore_fail.split(': ', 1)[-1]}`. Tente restaurar manualmente.")
+    elif _restore_fail.startswith("erro_import"):
+        st.error(f"⚠️ **Banco vazio** — Erro ao importar backup: `{_restore_fail.split(': ', 1)[-1]}`. Tente restaurar manualmente.")
+    else:
+        st.warning(f"⚠️ **Banco vazio** — Restauração automática falhou: {_restore_fail}")
+
 
 # ─── CSS personalizado ──────────────────────────────────────────────────────
 st.markdown("""
@@ -551,6 +609,7 @@ border:2px solid #333;border-radius:8px;padding:20px;max-width:560px;margin:0 au
   <td style="padding:6px 8px;text-align:right;">{fmt(total_v - total_nina)}</td>
 </tr>
 </table>
+{f'<div style="margin-top:10px;padding:8px 10px;background:#f5f5f5;border-radius:6px;font-size:0.85rem;color:#555;"><strong>\U0001f4dd Obs:</strong> {v["observacoes"]}</div>' if ("observacoes" in v.keys() and v["observacoes"]) else ''}
 <div style="text-align:center;margin-top:12px;font-size:0.75rem;color:#999;">
   Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}
 </div>
@@ -583,6 +642,7 @@ with st.sidebar:
     if st.button("⏹️ Encerrar Sessão", use_container_width=True):
         # Backup final antes de fechar
         cfg_exit = email_utils.get_config()
+        _backup_ok = True
         if email_utils.is_configured(cfg_exit):
             current_h = db.db_hash()
             stored_h = st.session_state.get("_sync_hash")
@@ -593,11 +653,26 @@ with st.sidebar:
                     email_utils.send_backup(excel_b, fn, cfg_exit)
                     email_utils.delete_old_backups(cfg_exit)
                     st.toast("☁️ Backup final enviado", icon="✅")
-                except Exception:
-                    pass
-        st.session_state.clear()
-        st.info("Sessão encerrada. Recarregue a página para entrar novamente.")
-        st.stop()
+                except Exception as _bk_err:
+                    _backup_ok = False
+                    st.session_state["_backup_fail"] = str(_bk_err)
+        if _backup_ok or st.session_state.get("_force_logout"):
+            st.session_state.clear()
+            st.info("Sessão encerrada. Recarregue a página para entrar novamente.")
+            st.stop()
+
+    # Mostrar erro de backup e opção de forçar logout
+    if st.session_state.get("_backup_fail"):
+        st.error(f"❌ Falha ao enviar backup: {st.session_state['_backup_fail']}")
+        c_retry, c_force = st.columns(2)
+        with c_retry:
+            if st.button("🔄 Tentar novamente", key="retry_bk", use_container_width=True):
+                st.session_state.pop("_backup_fail", None)
+                st.rerun()
+        with c_force:
+            if st.button("⚠️ Sair sem backup", key="force_logout", use_container_width=True):
+                st.session_state["_force_logout"] = True
+                st.rerun()
     st.caption(f"v1.0 • Controle Financeiro • {datetime.now().strftime('%d/%m/%Y')}")
 
 
@@ -629,7 +704,7 @@ if pagina == "🏠 Visão Geral":
         st.subheader("📅 Últimos Acertos Mensais (Nina)")
         dados_hist = []
         for m in meses[:6]:
-            tot = db.total_geral_mes(m["id"])
+            tot = db.total_geral_mes(m["id"]) + db.total_pagamentos_mes(m["id"])
             dados_hist.append({
                 "Mês": nome_mes(m["ano"], m["mes"]),
                 "Total Acerto": tot,
@@ -641,6 +716,48 @@ if pagina == "🏠 Visão Geral":
         if len(dados_hist) > 1:
             chart_df = pd.DataFrame(dados_hist).set_index("Mês")
             st.bar_chart(chart_df, color="#667eea")
+
+        # ── Dashboard consolidado ──
+        st.divider()
+        st.subheader("📊 Dashboard Consolidado")
+
+        todos_totais = []
+        for m in meses:
+            todos_totais.append(db.total_geral_mes(m["id"]) + db.total_pagamentos_mes(m["id"]))
+
+        media_mensal = sum(todos_totais) / len(todos_totais) if todos_totais else 0
+        mes_mais_caro_idx = todos_totais.index(max(todos_totais)) if todos_totais else 0
+        mes_mais_barato_idx = todos_totais.index(min(todos_totais)) if todos_totais else 0
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            metric_card("Média Mensal", media_mensal, "blue")
+        with c2:
+            metric_card("Mês + Caro", max(todos_totais) if todos_totais else 0, "red")
+        with c3:
+            metric_card("Mês + Barato", min(todos_totais) if todos_totais else 0, "green")
+        with c4:
+            metric_card("Total Acumulado", sum(todos_totais), "orange")
+
+        if todos_totais:
+            st.caption(
+                f"🔴 Mais caro: **{nome_mes(meses[mes_mais_caro_idx]['ano'], meses[mes_mais_caro_idx]['mes'])}** · "
+                f"🟢 Mais barato: **{nome_mes(meses[mes_mais_barato_idx]['ano'], meses[mes_mais_barato_idx]['mes'])}**"
+            )
+
+        # Comparativo planejado vs real
+        if total_d > 0 and todos_totais:
+            st.divider()
+            st.subheader("📐 Planejado vs Real")
+            comp_data = []
+            for i, m in enumerate(meses):
+                comp_data.append({
+                    "Mês": nome_mes(m["ano"], m["mes"]),
+                    "Planejado": total_d,
+                    "Real": todos_totais[i],
+                })
+            df_comp = pd.DataFrame(comp_data).set_index("Mês")
+            st.bar_chart(df_comp)
     else:
         st.info("Nenhum mês registrado ainda. Vá em **Contas do Mês** para criar o primeiro.")
 
@@ -650,7 +767,9 @@ if pagina == "🏠 Visão Geral":
         st.subheader("✈️ Últimas Viagens")
         for v in viagens[:3]:
             tot = db.total_viagem(v["id"])
-            st.markdown(f"**{v['nome']}** — {fmt(tot)}")
+            nina_v = db.total_nina_viagem(v["id"])
+            status = " ✅" if ("pago" in v.keys() and v["pago"]) else ""
+            st.markdown(f"**{v['nome']}**{status} — Total: {fmt(tot)} · Meu custo: {fmt(tot - nina_v)}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1197,6 +1316,21 @@ elif pagina == "✈️ Viagens / Eventos":
     with c3:
         metric_card("Meu Custo", total_v - total_nina_v, "red")
 
+    # Observações da viagem
+    _obs_v_atual = ""
+    if v_info and "observacoes" in v_info.keys():
+        _obs_v_atual = v_info["observacoes"] or ""
+    _nova_obs_v = st.text_input(
+        "📝 Observações da viagem (opcional)",
+        value=_obs_v_atual,
+        placeholder="Ex: Viagem de aniversário, hotel incluso...",
+        key=f"obs_viagem_{viagem_sel}",
+        disabled=_pago_v,
+    )
+    if not _pago_v and _nova_obs_v != _obs_v_atual:
+        db.atualizar_observacoes_viagem(viagem_sel, _nova_obs_v)
+        st.rerun()
+
     st.divider()
 
     cat_icons_v = {
@@ -1319,45 +1453,95 @@ elif pagina == "✈️ Viagens / Eventos":
 # 📊 HISTÓRICO
 # ═══════════════════════════════════════════════════════════════════════════
 elif pagina == "📊 Histórico":
-    st.header("📊 Histórico de Acertos Mensais")
+    st.header("📊 Histórico")
 
-    hist = db.historico_mensal()
-    if not hist:
-        st.info("Nenhum dado histórico ainda.")
-        st.stop()
+    tab_meses_h, tab_viagens_h = st.tabs(["📅 Acertos Mensais", "✈️ Viagens"])
 
-    dados = []
-    for h in hist:
-        dados.append({
-            "Mês": nome_mes(h["ano"], h["mes"]),
-            "Total": h["total"],
-        })
+    # ── Aba Acertos Mensais ──
+    with tab_meses_h:
+        hist = db.historico_mensal()
+        if not hist:
+            st.info("Nenhum dado histórico ainda.")
+        else:
+            dados = []
+            for h in hist:
+                dados.append({
+                    "Mês": nome_mes(h["ano"], h["mes"]),
+                    "Total": h["total"],
+                })
 
-    df = pd.DataFrame(dados)
-    st.dataframe(df.style.format({"Total": "R$ {:.2f}"}), use_container_width=True, hide_index=True)
+            df = pd.DataFrame(dados)
+            st.dataframe(df.style.format({"Total": "R$ {:.2f}"}), use_container_width=True, hide_index=True)
 
-    if len(dados) > 1:
-        st.subheader("📈 Evolução")
-        chart_df = df.set_index("Mês")
-        st.line_chart(chart_df, color="#667eea")
+            if len(dados) > 1:
+                st.subheader("📈 Evolução")
+                chart_df = df.set_index("Mês")
+                st.line_chart(chart_df, color="#667eea")
 
-    # Por categoria
-    st.subheader("📊 Detalhamento por Categoria")
-    hist_cat = db.historico_por_categoria()
-    cat_dict = dict(db.CATEGORIAS_MES)
-    dados_cat = []
-    for h in hist_cat:
-        if h["categoria"]:
-            dados_cat.append({
-                "Mês": nome_mes(h["ano"], h["mes"]),
-                "Categoria": cat_dict.get(h["categoria"], h["categoria"]),
-                "Total": h["total"],
-            })
-    if dados_cat:
-        df_cat = pd.DataFrame(dados_cat)
-        pivot = df_cat.pivot_table(index="Mês", columns="Categoria", values="Total", fill_value=0)
-        st.dataframe(pivot.style.format("R$ {:.2f}"), use_container_width=True)
-        st.bar_chart(pivot)
+            # Por categoria
+            st.subheader("📊 Detalhamento por Categoria")
+            hist_cat = db.historico_por_categoria()
+            cat_dict = dict(db.CATEGORIAS_MES)
+            dados_cat = []
+            for h in hist_cat:
+                if h["categoria"]:
+                    dados_cat.append({
+                        "Mês": nome_mes(h["ano"], h["mes"]),
+                        "Categoria": cat_dict.get(h["categoria"], h["categoria"]),
+                        "Total": h["total"],
+                    })
+            if dados_cat:
+                df_cat = pd.DataFrame(dados_cat)
+                pivot = df_cat.pivot_table(index="Mês", columns="Categoria", values="Total", fill_value=0)
+                st.dataframe(pivot.style.format("R$ {:.2f}"), use_container_width=True)
+                st.bar_chart(pivot)
+
+    # ── Aba Viagens ──
+    with tab_viagens_h:
+        hist_v = db.historico_viagens()
+        if not hist_v:
+            st.info("Nenhuma viagem registrada ainda.")
+        else:
+            dados_v = []
+            for v in hist_v:
+                data_fmt = ""
+                if v["data_viagem"]:
+                    try:
+                        data_fmt = datetime.strptime(v["data_viagem"], "%Y-%m-%d").strftime("%d/%m/%Y")
+                    except ValueError:
+                        data_fmt = v["data_viagem"]
+                dados_v.append({
+                    "Viagem": v["nome"],
+                    "Data": data_fmt,
+                    "Total": v["total"],
+                    "Nina pagou": v["total_nina"],
+                    "Meu Custo": v["total"] - v["total_nina"],
+                    "Status": "✅ Pago" if v["pago"] else "🔓 Aberto",
+                })
+
+            df_v = pd.DataFrame(dados_v)
+            st.dataframe(
+                df_v.style.format({
+                    "Total": "R$ {:.2f}", "Nina pagou": "R$ {:.2f}", "Meu Custo": "R$ {:.2f}"
+                }),
+                use_container_width=True, hide_index=True,
+            )
+
+            # Métricas resumo
+            total_todas_viag = sum(v["total"] for v in hist_v)
+            total_nina_viag = sum(v["total_nina"] for v in hist_v)
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                metric_card("Total Gasto em Viagens", total_todas_viag, "blue")
+            with c2:
+                metric_card("Pago por Nina (total)", total_nina_viag, "orange")
+            with c3:
+                metric_card("Meu Custo Total", total_todas_viag - total_nina_viag, "red")
+
+            if len(dados_v) > 1:
+                st.subheader("📈 Evolução de Custo por Viagem")
+                chart_viag = pd.DataFrame([{"Viagem": d["Viagem"], "Total": d["Total"], "Meu Custo": d["Meu Custo"]} for d in dados_v]).set_index("Viagem")
+                st.bar_chart(chart_viag)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1428,7 +1612,7 @@ elif pagina == "📦 Parcelamentos":
             st.divider()
             for p in parcelas:
                 progresso = p["parcela_atual"] / p["num_parcelas"]
-                c1, c2, c3, c4, c5, c6 = st.columns([3, 2, 2, 1, 1, 1])
+                c1, c2, c3, c4, c5, c6, c7 = st.columns([3, 2, 2, 1, 1, 1, 1])
                 with c1:
                     st.markdown(f"**{p['descricao']}**")
                 with c2:
@@ -1454,6 +1638,16 @@ elif pagina == "📦 Parcelamentos":
                     if st.button("✅", key=f"pf_{p['id']}", help="Finalizar"):
                         db.finalizar_parcelamento(p["id"])
                         st.rerun()
+                with c7:
+                    with st.popover("✏️", help="Editar parcelamento"):
+                        st.caption(f"Editar **{p['descricao']}**")
+                        _ed_desc = st.text_input("Descrição", value=p["descricao"], key=f"pe_d_{p['id']}")
+                        _ed_val = st.number_input("Valor parcela", value=float(p["valor_parcela"]), step=10.0, key=f"pe_v_{p['id']}")
+                        _ed_num = st.number_input("Nº parcelas", value=int(p["num_parcelas"]), min_value=1, step=1, key=f"pe_n_{p['id']}")
+                        _ed_at = st.number_input("Parcela atual", value=int(p["parcela_atual"]), min_value=1, max_value=int(_ed_num), step=1, key=f"pe_a_{p['id']}")
+                        if st.button("💾 Salvar", key=f"pe_ok_{p['id']}", type="primary"):
+                            db.atualizar_parcelamento(p["id"], _ed_desc, _ed_val, int(_ed_num), int(_ed_at))
+                            st.rerun()
 
     with tab_fin:
         finalizados = [p for p in db.listar_parcelamentos(ativos=False) if not p["ativo"]]
@@ -1561,7 +1755,15 @@ elif pagina == "📥 Importar / Exportar":
             "Selecione o arquivo Excel para importar (ex: 'PLANEJAMENTO APOSENTADORIA.xlsx'). "
             "Útil para restaurar dados a partir da planilha original quando o backup por e-mail não for suficiente."
         )
-        st.warning("⚠️ A importação adicionará dados. Execute apenas uma vez para evitar duplicatas.")
+
+        if not db.banco_vazio():
+            st.warning(
+                "⚠️ **O banco já contém dados.** A importação pode gerar duplicatas. "
+                "Recomendamos usar apenas com o banco vazio (limpe via 📧 Restaurar do E-mail)."
+            )
+            _confirmar_imp = st.checkbox("✅ Estou ciente e desejo importar mesmo assim", key="ack_imp_dup")
+        else:
+            _confirmar_imp = True
 
         arquivo_upload = st.file_uploader(
             "Selecione o arquivo Excel (.xlsx)",
@@ -1570,7 +1772,7 @@ elif pagina == "📥 Importar / Exportar":
         )
 
         if st.button("🚀 Importar Planilha", type="primary", key="btn_imp_orig",
-                     disabled=arquivo_upload is None):
+                     disabled=arquivo_upload is None or not _confirmar_imp):
             import openpyxl as _openpyxl
             import io as _io
 

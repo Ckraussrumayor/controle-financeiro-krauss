@@ -119,6 +119,7 @@ def init_db():
         for _sql in [
             "ALTER TABLE meses ADD COLUMN pago INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE viagens ADD COLUMN pago INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE viagens ADD COLUMN observacoes TEXT",
         ]:
             try:
                 conn.execute(_sql)
@@ -328,6 +329,11 @@ def atualizar_viagem(id_, nome, data_viagem=None, mes_id=None):
             "UPDATE viagens SET nome=?, data_viagem=?, mes_id=? WHERE id=?",
             (nome, data_viagem, mes_id, id_)
         )
+
+
+def atualizar_observacoes_viagem(viagem_id, observacoes):
+    with get_conn() as conn:
+        conn.execute("UPDATE viagens SET observacoes=? WHERE id=?", (observacoes or None, viagem_id))
 
 
 def remover_viagem(viagem_id):
@@ -636,4 +642,16 @@ def historico_por_categoria():
             LEFT JOIN lancamentos l ON l.mes_id = m.id
             GROUP BY m.ano, m.mes, l.categoria
             ORDER BY m.ano, m.mes
+        """).fetchall()
+
+
+def historico_viagens():
+    """Retorna lista de viagens com totais para o histórico."""
+    with get_conn() as conn:
+        return conn.execute("""
+            SELECT v.id, v.nome, v.data_viagem, v.pago,
+                   COALESCE((SELECT SUM(lv.valor) FROM lancamentos_viagem lv WHERE lv.viagem_id = v.id), 0) as total,
+                   COALESCE((SELECT SUM(lv.valor) FROM lancamentos_viagem lv WHERE lv.viagem_id = v.id AND lv.pago_por_nina = 1), 0) as total_nina
+            FROM viagens v
+            ORDER BY v.data_viagem DESC, v.id DESC
         """).fetchall()
