@@ -792,7 +792,7 @@ elif pagina == "📝 Contas do Mês":
                 if st.checkbox("🏠 Contas Fixas", value=True, key="copy_cat_conta_fixa"):
                     _cats_sel.append("conta_fixa")
             with _cb:
-                if st.checkbox("💳 Parceladas", value=True, key="copy_cat_parcelada"):
+                if st.checkbox("💳 Parceladas", value=False, key="copy_cat_parcelada"):
                     _cats_sel.append("parcelada")
             with _cc:
                 if st.checkbox("👤 Devedor (Nina)", value=True, key="copy_cat_devedor_nina"):
@@ -834,7 +834,10 @@ elif pagina == "📝 Contas do Mês":
         st.stop()
 
     # Selecionar mês — persiste ao navegar entre páginas
-    opcoes_mes = {m["id"]: nome_mes(m["ano"], m["mes"]) for m in meses}
+    opcoes_mes = {
+        m["id"]: nome_mes(m["ano"], m["mes"]) + (" ✅ Pago" if m["pago"] else "")
+        for m in meses
+    }
     ids_disponiveis = list(opcoes_mes.keys())
     _mes_salvo = st.session_state.get("_mes_selecionado")
     idx_default = ids_disponiveis.index(_mes_salvo) if _mes_salvo in ids_disponiveis else 0
@@ -912,35 +915,37 @@ elif pagina == "📝 Contas do Mês":
                     with c2:
                         st.text(fmt(pg["valor"]))
                     with c3:
-                        with st.popover("🗑️"):
-                            st.caption(f"Excluir pagamento de **{pg['divida_desc']}**?")
-                            if st.button("✅ Confirmar", key=f"pgd_ok_{pg['id']}", type="primary"):
-                                db.remover_pagamento_divida(pg["id"])
-                                st.rerun()
+                        if not _pago_mes:
+                            with st.popover("🗑️"):
+                                st.caption(f"Excluir pagamento de **{pg['divida_desc']}**?")
+                                if st.button("✅ Confirmar", key=f"pgd_ok_{pg['id']}", type="primary"):
+                                    db.remover_pagamento_divida(pg["id"])
+                                    st.rerun()
 
-            # --- Selecionar dívida e pagar ---
-            dividas_abertas = db.listar_dividas(apenas_abertas=True)
-            if dividas_abertas:
-                st.markdown("**💰 Registrar pagamento de dívida:**")
-                opcoes_div = {d["id"]: f"{d['descricao']} — saldo {fmt(db.saldo_divida(d['id']))}"
-                              for d in dividas_abertas}
-                with st.form(f"pagar_divida_{mes_selecionado}", clear_on_submit=True):
-                    fc1, fc2, fc3 = st.columns([4, 2, 1])
-                    with fc1:
-                        div_sel = st.selectbox("Selecione a dívida", options=list(opcoes_div.keys()),
-                                               format_func=lambda x: opcoes_div[x],
-                                               key=f"sel_div_{mes_selecionado}")
-                    with fc2:
-                        val_pgto = st.number_input("Valor pago (R$)", step=10.0, min_value=0.01,
-                                                   key=f"val_pgto_{mes_selecionado}")
-                    with fc3:
-                        st.write("")
-                        pagar = st.form_submit_button("💰 Pagar")
-                    if pagar and div_sel and val_pgto > 0:
-                        db.adicionar_pagamento_divida(div_sel, mes_selecionado, val_pgto)
-                        st.rerun()
-            else:
-                st.caption("Nenhuma dívida em aberto. Cadastre abaixo ⬇️")
+            if not _pago_mes:
+                # --- Selecionar dívida e pagar ---
+                dividas_abertas = db.listar_dividas(apenas_abertas=True)
+                if dividas_abertas:
+                    st.markdown("**💰 Registrar pagamento de dívida:**")
+                    opcoes_div = {d["id"]: f"{d['descricao']} — saldo {fmt(db.saldo_divida(d['id']))}"
+                                  for d in dividas_abertas}
+                    with st.form(f"pagar_divida_{mes_selecionado}", clear_on_submit=True):
+                        fc1, fc2, fc3 = st.columns([4, 2, 1])
+                        with fc1:
+                            div_sel = st.selectbox("Selecione a dívida", options=list(opcoes_div.keys()),
+                                                   format_func=lambda x: opcoes_div[x],
+                                                   key=f"sel_div_{mes_selecionado}")
+                        with fc2:
+                            val_pgto = st.number_input("Valor pago (R$)", step=10.0, min_value=0.01,
+                                                       key=f"val_pgto_{mes_selecionado}")
+                        with fc3:
+                            st.write("")
+                            pagar = st.form_submit_button("💰 Pagar")
+                        if pagar and div_sel and val_pgto > 0:
+                            db.adicionar_pagamento_divida(div_sel, mes_selecionado, val_pgto)
+                            st.rerun()
+                else:
+                    st.caption("Nenhuma dívida em aberto. Cadastre abaixo ⬇️")
 
             # --- Lançamentos avulsos extras (sem víncilo a dívida) ---
             if lancamentos:
@@ -948,39 +953,41 @@ elif pagina == "📝 Contas do Mês":
                 for l in lancamentos:
                     c1, c2, c3 = st.columns([4, 2, 1])
                     with c1:
-                        novo_desc = st.text_input("Desc", l["descricao"], key=f"ld_{l['id']}", label_visibility="collapsed")
+                        novo_desc = st.text_input("Desc", l["descricao"], key=f"ld_{l['id']}", label_visibility="collapsed", disabled=_pago_mes)
                     with c2:
-                        novo_val = st.number_input("Val", value=float(l["valor"]), step=10.0, key=f"lv_{l['id']}", label_visibility="collapsed")
+                        novo_val = st.number_input("Val", value=float(l["valor"]), step=10.0, key=f"lv_{l['id']}", label_visibility="collapsed", disabled=_pago_mes)
                     with c3:
-                        with st.popover("🗑️"):
-                            st.caption(f"Excluir **{l['descricao']}**?")
-                            if st.button("✅ Confirmar", key=f"lx_ok_{l['id']}", type="primary"):
-                                db.remover_lancamento(l["id"])
-                                st.rerun()
-                    if novo_desc != l["descricao"] or novo_val != l["valor"]:
+                        if not _pago_mes:
+                            with st.popover("🗑️"):
+                                st.caption(f"Excluir **{l['descricao']}**?")
+                                if st.button("✅ Confirmar", key=f"lx_ok_{l['id']}", type="primary"):
+                                    db.remover_lancamento(l["id"])
+                                    st.rerun()
+                    if not _pago_mes and (novo_desc != l["descricao"] or novo_val != l["valor"]):
                         db.atualizar_lancamento(l["id"], novo_desc, novo_val)
                         st.rerun()
 
-            with st.form(f"add_{cat_key}_{mes_selecionado}", clear_on_submit=True):
-                st.markdown("**📝 Adicionar extra avulso:**")
-                fc1, fc2, fc3 = st.columns([4, 2, 1])
-                with fc1:
-                    desc = st.text_input("Descrição do extra", key=f"nd_{cat_key}",
-                                         placeholder="Ex: Farmácia, Presente...")
-                with fc2:
-                    val = st.number_input("Valor (R$)", value=0.0, min_value=0.0, step=10.0,
-                                          format="%.2f", key=f"nv_{cat_key}")
-                with fc3:
-                    st.write("")
-                    add = st.form_submit_button("➕ Add")
-                if add:
-                    if not desc:
-                        st.warning("Informe a descrição.")
-                    elif val <= 0:
-                        st.warning("Informe um valor maior que zero.")
-                    else:
-                        db.adicionar_lancamento(mes_selecionado, cat_key, desc, val)
-                        st.rerun()
+            if not _pago_mes:
+                with st.form(f"add_{cat_key}_{mes_selecionado}", clear_on_submit=True):
+                    st.markdown("**📝 Adicionar extra avulso:**")
+                    fc1, fc2, fc3 = st.columns([4, 2, 1])
+                    with fc1:
+                        desc = st.text_input("Descrição do extra", key=f"nd_{cat_key}",
+                                             placeholder="Ex: Farmácia, Presente...")
+                    with fc2:
+                        val = st.number_input("Valor (R$)", value=0.0, min_value=0.0, step=10.0,
+                                              format="%.2f", key=f"nv_{cat_key}")
+                    with fc3:
+                        st.write("")
+                        add = st.form_submit_button("➕ Add")
+                    if add:
+                        if not desc:
+                            st.warning("Informe a descrição.")
+                        elif val <= 0:
+                            st.warning("Informe um valor maior que zero.")
+                        else:
+                            db.adicionar_lancamento(mes_selecionado, cat_key, desc, val)
+                            st.rerun()
 
             # --- Gerenciar dívidas (cadastrar/ver) ---
             with st.expander("📋 Gerenciar Dívidas"):
@@ -995,27 +1002,29 @@ elif pagina == "📝 Contas do Mês":
                         with c2:
                             st.text(f"Total: {fmt(d['valor_total'])}")
                         with c3:
-                            with st.popover("🗑️"):
-                                st.caption(f"Excluir dívida **{d['descricao']}**?")
-                                if st.button("✅ Confirmar", key=f"dd_ok_{d['id']}", type="primary"):
-                                    db.remover_divida(d["id"])
-                                    st.rerun()
+                            if not _pago_mes:
+                                with st.popover("🗑️"):
+                                    st.caption(f"Excluir dívida **{d['descricao']}**?")
+                                    if st.button("✅ Confirmar", key=f"dd_ok_{d['id']}", type="primary"):
+                                        db.remover_divida(d["id"])
+                                        st.rerun()
 
-                with st.form(f"nova_divida_{mes_selecionado}", clear_on_submit=True):
-                    st.caption("Cadastrar nova dívida:")
-                    dc1, dc2, dc3 = st.columns([4, 2, 1])
-                    with dc1:
-                        desc_div = st.text_input("Descrição", key="nd_divida", label_visibility="collapsed",
-                                                 placeholder="Ex: Troca do carburador...")
-                    with dc2:
-                        val_div = st.number_input("Valor total", step=10.0, min_value=0.01,
-                                                  key="nv_divida", label_visibility="collapsed",
-                                                  placeholder="R$")
-                    with dc3:
-                        add_div = st.form_submit_button("➕")
-                    if add_div and desc_div and val_div > 0:
-                        db.adicionar_divida(desc_div, val_div)
-                        st.rerun()
+                if not _pago_mes:
+                    with st.form(f"nova_divida_{mes_selecionado}", clear_on_submit=True):
+                        st.caption("Cadastrar nova dívida:")
+                        dc1, dc2, dc3 = st.columns([4, 2, 1])
+                        with dc1:
+                            desc_div = st.text_input("Descrição", key="nd_divida", label_visibility="collapsed",
+                                                     placeholder="Ex: Troca do carburador...")
+                        with dc2:
+                            val_div = st.number_input("Valor total", step=10.0, min_value=0.01,
+                                                      key="nv_divida", label_visibility="collapsed",
+                                                      placeholder="R$")
+                        with dc3:
+                            add_div = st.form_submit_button("➕")
+                        if add_div and desc_div and val_div > 0:
+                            db.adicionar_divida(desc_div, val_div)
+                            st.rerun()
 
             continue  # pula o bloco genérico abaixo
 
@@ -1027,38 +1036,40 @@ elif pagina == "📝 Contas do Mês":
             for l in lancamentos:
                 c1, c2, c3 = st.columns([4, 2, 1])
                 with c1:
-                    novo_desc = st.text_input("Desc", l["descricao"], key=f"ld_{l['id']}", label_visibility="collapsed")
+                    novo_desc = st.text_input("Desc", l["descricao"], key=f"ld_{l['id']}", label_visibility="collapsed", disabled=_pago_mes)
                 with c2:
-                    novo_val = st.number_input("Val", value=float(l["valor"]), step=10.0, key=f"lv_{l['id']}", label_visibility="collapsed")
+                    novo_val = st.number_input("Val", value=float(l["valor"]), step=10.0, key=f"lv_{l['id']}", label_visibility="collapsed", disabled=_pago_mes)
                 with c3:
-                    with st.popover("🗑️"):
-                        st.caption(f"Excluir **{l['descricao']}**?")
-                        if st.button("✅ Confirmar", key=f"lx_ok_{l['id']}", type="primary"):
-                            db.remover_lancamento(l["id"])
-                            st.rerun()
-                if novo_desc != l["descricao"] or novo_val != l["valor"]:
+                    if not _pago_mes:
+                        with st.popover("🗑️"):
+                            st.caption(f"Excluir **{l['descricao']}**?")
+                            if st.button("✅ Confirmar", key=f"lx_ok_{l['id']}", type="primary"):
+                                db.remover_lancamento(l["id"])
+                                st.rerun()
+                if not _pago_mes and (novo_desc != l["descricao"] or novo_val != l["valor"]):
                     db.atualizar_lancamento(l["id"], novo_desc, novo_val)
                     st.rerun()
 
         # Quick add inline
-        with st.form(f"add_{cat_key}_{mes_selecionado}", clear_on_submit=True):
-            fc1, fc2, fc3 = st.columns([4, 2, 1])
-            with fc1:
-                desc = st.text_input("Descrição", key=f"nd_{cat_key}", label_visibility="collapsed",
-                                     placeholder=f"Nova {cat_nome.lower()}...")
-            with fc2:
-                val = st.number_input("Valor (R$)", value=0.0, min_value=0.0, step=10.0,
-                                      format="%.2f", key=f"nv_{cat_key}", label_visibility="collapsed")
-            with fc3:
-                add = st.form_submit_button("➕")
-            if add:
-                if not desc:
-                    st.warning("Informe a descrição.")
-                elif val <= 0:
-                    st.warning("Informe um valor maior que zero.")
-                else:
-                    db.adicionar_lancamento(mes_selecionado, cat_key, desc, val)
-                st.rerun()
+        if not _pago_mes:
+            with st.form(f"add_{cat_key}_{mes_selecionado}", clear_on_submit=True):
+                fc1, fc2, fc3 = st.columns([4, 2, 1])
+                with fc1:
+                    desc = st.text_input("Descrição", key=f"nd_{cat_key}", label_visibility="collapsed",
+                                         placeholder=f"Nova {cat_nome.lower()}...")
+                with fc2:
+                    val = st.number_input("Valor (R$)", value=0.0, min_value=0.0, step=10.0,
+                                          format="%.2f", key=f"nv_{cat_key}", label_visibility="collapsed")
+                with fc3:
+                    add = st.form_submit_button("➕")
+                if add:
+                    if not desc:
+                        st.warning("Informe a descrição.")
+                    elif val <= 0:
+                        st.warning("Informe um valor maior que zero.")
+                    else:
+                        db.adicionar_lancamento(mes_selecionado, cat_key, desc, val)
+                    st.rerun()
 
     # Ações do mês
     st.divider()
@@ -1067,21 +1078,22 @@ elif pagina == "📝 Contas do Mês":
         if st.button("📋 Gerar Resumo WhatsApp", use_container_width=True, type="primary"):
             st.session_state["mostrar_resumo_mes"] = mes_selecionado
     with col_acoes:
-        with st.expander("⚠️ Ações"):
-            if st.session_state.get("_confirm_del_mes") == mes_selecionado:
-                st.error(f"⚠️ Excluir **{opcoes_mes[mes_selecionado]}** e todos os seus lançamentos? Esta ação não pode ser desfeita.")
-                cm1, cm2 = st.columns(2)
-                if cm1.button("✅ Sim, excluir", key="del_mes_ok", type="primary"):
-                    db.remover_mes(mes_selecionado)
-                    del st.session_state["_confirm_del_mes"]
-                    st.rerun()
-                if cm2.button("❌ Cancelar", key="del_mes_no"):
-                    del st.session_state["_confirm_del_mes"]
-                    st.rerun()
-            else:
-                if st.button("🗑️ Excluir este mês e todos os lançamentos", type="secondary"):
-                    st.session_state["_confirm_del_mes"] = mes_selecionado
-                    st.rerun()
+        if not _pago_mes:
+            with st.expander("⚠️ Ações"):
+                if st.session_state.get("_confirm_del_mes") == mes_selecionado:
+                    st.error(f"⚠️ Excluir **{opcoes_mes[mes_selecionado]}** e todos os seus lançamentos? Esta ação não pode ser desfeita.")
+                    cm1, cm2 = st.columns(2)
+                    if cm1.button("✅ Sim, excluir", key="del_mes_ok", type="primary"):
+                        db.remover_mes(mes_selecionado)
+                        del st.session_state["_confirm_del_mes"]
+                        st.rerun()
+                    if cm2.button("❌ Cancelar", key="del_mes_no"):
+                        del st.session_state["_confirm_del_mes"]
+                        st.rerun()
+                else:
+                    if st.button("🗑️ Excluir este mês e todos os lançamentos", type="secondary"):
+                        st.session_state["_confirm_del_mes"] = mes_selecionado
+                        st.rerun()
 
     if st.session_state.get("mostrar_resumo_mes") == mes_selecionado:
         st.markdown("---")
@@ -1126,14 +1138,36 @@ elif pagina == "✈️ Viagens / Eventos":
         st.stop()
 
     # Selecionar viagem
-    opcoes_viagem = {v["id"]: v["nome"] for v in viagens}
+    opcoes_viagem = {
+        v["id"]: v["nome"] + (" ✅ Pago" if v["pago"] else "")
+        for v in viagens
+    }
     viagem_sel = st.selectbox("Selecione a viagem", options=list(opcoes_viagem.keys()),
                               format_func=lambda x: opcoes_viagem[x])
 
     v_info = db.obter_viagem(viagem_sel)
+    _pago_v = bool(v_info["pago"])
     totais_v = db.totais_viagem(viagem_sel)
     total_v = db.total_viagem(viagem_sel)
     total_nina_v = db.total_nina_viagem(viagem_sel)
+
+    # ── Banner e toggle Pago ────────────────────────────────────────────────────────
+    if _pago_v:
+        st.markdown("""
+        <style>
+        section[data-testid="stMain"] > div {
+            background: linear-gradient(160deg,#e8f5e9 0%,#f1f8e9 100%) !important;
+        }
+        </style>""", unsafe_allow_html=True)
+        st.success("✅ **VIAGEM PAGA** — Acerto concluído. Edições desativadas.")
+        if st.button("🔓 Desmarcar como Pago", key="des_pago_v"):
+            db.marcar_viagem_paga(viagem_sel, 0)
+            st.rerun()
+    else:
+        if st.button("✅ Marcar como Pago", key="marcar_pago_v", type="secondary",
+                     help="Bloqueia edições e sinaliza a viagem como acertada"):
+            db.marcar_viagem_paga(viagem_sel, 1)
+            st.rerun()
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -1162,42 +1196,44 @@ elif pagina == "✈️ Viagens / Eventos":
             for l in lancamentos:
                 c1, c2, c3, c4 = st.columns([3, 2, 1, 1])
                 with c1:
-                    novo_desc = st.text_input("Desc", l["descricao"], key=f"vd_{l['id']}", label_visibility="collapsed")
+                    novo_desc = st.text_input("Desc", l["descricao"], key=f"vd_{l['id']}", label_visibility="collapsed", disabled=_pago_v)
                 with c2:
-                    novo_val = st.number_input("Val", value=float(l["valor"]), step=10.0, key=f"vv_{l['id']}", label_visibility="collapsed")
+                    novo_val = st.number_input("Val", value=float(l["valor"]), step=10.0, key=f"vv_{l['id']}", label_visibility="collapsed", disabled=_pago_v)
                 with c3:
-                    nova_nina = st.checkbox("Nina", value=bool(l["pago_por_nina"]), key=f"vn_{l['id']}")
+                    nova_nina = st.checkbox("Nina", value=bool(l["pago_por_nina"]), key=f"vn_{l['id']}", disabled=_pago_v)
                 with c4:
-                    with st.popover("🗑️"):
-                        st.caption(f"Excluir **{l['descricao']}**?")
-                        if st.button("✅ Confirmar", key=f"vx_ok_{l['id']}", type="primary"):
-                            db.remover_lancamento_viagem(l["id"])
-                            st.rerun()
-                if novo_desc != l["descricao"] or novo_val != l["valor"] or nova_nina != bool(l["pago_por_nina"]):
+                    if not _pago_v:
+                        with st.popover("🗑️"):
+                            st.caption(f"Excluir **{l['descricao']}**?")
+                            if st.button("✅ Confirmar", key=f"vx_ok_{l['id']}", type="primary"):
+                                db.remover_lancamento_viagem(l["id"])
+                                st.rerun()
+                if not _pago_v and (novo_desc != l["descricao"] or novo_val != l["valor"] or nova_nina != bool(l["pago_por_nina"])):
                     db.atualizar_lancamento_viagem(l["id"], novo_desc, novo_val, nova_nina)
                     st.rerun()
 
         # Quick add
-        with st.form(f"addv_{cat_key}_{viagem_sel}", clear_on_submit=True):
-            fc1, fc2, fc3, fc4 = st.columns([3, 2, 1, 1])
-            with fc1:
-                desc = st.text_input("Desc", key=f"nvd_{cat_key}", label_visibility="collapsed",
-                                     placeholder="Nova despesa...")
-            with fc2:
-                val = st.number_input("Valor (R$)", value=0.0, min_value=0.0, step=10.0,
-                                      format="%.2f", key=f"nvv_{cat_key}", label_visibility="collapsed")
-            with fc3:
-                nina = st.checkbox("Nina", key=f"nvn_{cat_key}")
-            with fc4:
-                add = st.form_submit_button("➕")
-            if add:
-                if not desc:
-                    st.warning("Informe a descrição.")
-                elif val <= 0:
-                    st.warning("Informe um valor maior que zero.")
-                else:
-                    db.adicionar_lancamento_viagem(viagem_sel, cat_key, desc, val, nina)
-                    st.rerun()
+        if not _pago_v:
+            with st.form(f"addv_{cat_key}_{viagem_sel}", clear_on_submit=True):
+                fc1, fc2, fc3, fc4 = st.columns([3, 2, 1, 1])
+                with fc1:
+                    desc = st.text_input("Desc", key=f"nvd_{cat_key}", label_visibility="collapsed",
+                                         placeholder="Nova despesa...")
+                with fc2:
+                    val = st.number_input("Valor (R$)", value=0.0, min_value=0.0, step=10.0,
+                                          format="%.2f", key=f"nvv_{cat_key}", label_visibility="collapsed")
+                with fc3:
+                    nina = st.checkbox("Nina", key=f"nvn_{cat_key}")
+                with fc4:
+                    add = st.form_submit_button("➕")
+                if add:
+                    if not desc:
+                        st.warning("Informe a descrição.")
+                    elif val <= 0:
+                        st.warning("Informe um valor maior que zero.")
+                    else:
+                        db.adicionar_lancamento_viagem(viagem_sel, cat_key, desc, val, nina)
+                        st.rerun()
 
     st.divider()
     col_rv, col_av = st.columns([1, 1])
@@ -1205,48 +1241,49 @@ elif pagina == "✈️ Viagens / Eventos":
         if st.button("📋 Gerar Resumo WhatsApp", use_container_width=True, type="primary", key="btn_resumo_viagem"):
             st.session_state["mostrar_resumo_viagem"] = viagem_sel
     with col_av:
-        with st.expander("⚠️ Ações"):
-            # ── Editar nome e data ──
-            _data_edit = datetime.strptime(v_info["data_viagem"], "%Y-%m-%d") if v_info["data_viagem"] else datetime.now()
-            col_en, col_ed = st.columns(2)
-            with col_en:
-                novo_nome_v = st.text_input("Nome da viagem", value=v_info["nome"], key=f"edit_nome_v_{viagem_sel}")
-            with col_ed:
-                nova_data_v = st.date_input("Data", value=_data_edit, format="DD/MM/YYYY", key=f"edit_data_v_{viagem_sel}")
-            if st.button("💾 Salvar nome/data", key=f"salvar_nome_data_v_{viagem_sel}"):
-                if novo_nome_v:
-                    db.atualizar_viagem(viagem_sel, novo_nome_v, str(nova_data_v), v_info["mes_id"])
+        if not _pago_v:
+            with st.expander("⚠️ Ações"):
+                # ── Editar nome e data ──
+                _data_edit = datetime.strptime(v_info["data_viagem"], "%Y-%m-%d") if v_info["data_viagem"] else datetime.now()
+                col_en, col_ed = st.columns(2)
+                with col_en:
+                    novo_nome_v = st.text_input("Nome da viagem", value=v_info["nome"], key=f"edit_nome_v_{viagem_sel}")
+                with col_ed:
+                    nova_data_v = st.date_input("Data", value=_data_edit, format="DD/MM/YYYY", key=f"edit_data_v_{viagem_sel}")
+                if st.button("💾 Salvar nome/data", key=f"salvar_nome_data_v_{viagem_sel}"):
+                    if novo_nome_v:
+                        db.atualizar_viagem(viagem_sel, novo_nome_v, str(nova_data_v), v_info["mes_id"])
+                        st.rerun()
+                    else:
+                        st.warning("O nome não pode ficar em branco.")
+                st.divider()
+                # ── Vincular ao mês ──
+                meses_opcoes_edit = {0: "— Nenhum —"}
+                for m_item in meses:
+                    meses_opcoes_edit[m_item["id"]] = nome_mes(m_item["ano"], m_item["mes"])
+                current_mes = v_info["mes_id"] if v_info["mes_id"] else 0
+                novo_mes_link = st.selectbox("Vincular ao mês", options=list(meses_opcoes_edit.keys()),
+                                             format_func=lambda x: meses_opcoes_edit[x],
+                                             index=list(meses_opcoes_edit.keys()).index(current_mes) if current_mes in meses_opcoes_edit else 0)
+                if novo_mes_link != current_mes:
+                    db.atualizar_viagem(viagem_sel, v_info["nome"], v_info["data_viagem"],
+                                        novo_mes_link if novo_mes_link else None)
                     st.rerun()
-                else:
-                    st.warning("O nome não pode ficar em branco.")
-            st.divider()
-            # ── Vincular ao mês ──
-            meses_opcoes_edit = {0: "— Nenhum —"}
-            for m_item in meses:
-                meses_opcoes_edit[m_item["id"]] = nome_mes(m_item["ano"], m_item["mes"])
-            current_mes = v_info["mes_id"] if v_info["mes_id"] else 0
-            novo_mes_link = st.selectbox("Vincular ao mês", options=list(meses_opcoes_edit.keys()),
-                                         format_func=lambda x: meses_opcoes_edit[x],
-                                         index=list(meses_opcoes_edit.keys()).index(current_mes) if current_mes in meses_opcoes_edit else 0)
-            if novo_mes_link != current_mes:
-                db.atualizar_viagem(viagem_sel, v_info["nome"], v_info["data_viagem"],
-                                    novo_mes_link if novo_mes_link else None)
-                st.rerun()
 
-            if st.session_state.get("_confirm_del_viagem") == viagem_sel:
-                st.error(f"⚠️ Excluir a viagem **{v_info['nome']}** e todos os seus lançamentos? Esta ação não pode ser desfeita.")
-                cv1, cv2 = st.columns(2)
-                if cv1.button("✅ Sim, excluir", key="del_viagem_ok", type="primary"):
-                    db.remover_viagem(viagem_sel)
-                    del st.session_state["_confirm_del_viagem"]
-                    st.rerun()
-                if cv2.button("❌ Cancelar", key="del_viagem_no"):
-                    del st.session_state["_confirm_del_viagem"]
-                    st.rerun()
-            else:
-                if st.button("🗑️ Excluir esta viagem", type="secondary"):
-                    st.session_state["_confirm_del_viagem"] = viagem_sel
-                    st.rerun()
+                if st.session_state.get("_confirm_del_viagem") == viagem_sel:
+                    st.error(f"⚠️ Excluir a viagem **{v_info['nome']}** e todos os seus lançamentos? Esta ação não pode ser desfeita.")
+                    cv1, cv2 = st.columns(2)
+                    if cv1.button("✅ Sim, excluir", key="del_viagem_ok", type="primary"):
+                        db.remover_viagem(viagem_sel)
+                        del st.session_state["_confirm_del_viagem"]
+                        st.rerun()
+                    if cv2.button("❌ Cancelar", key="del_viagem_no"):
+                        del st.session_state["_confirm_del_viagem"]
+                        st.rerun()
+                else:
+                    if st.button("🗑️ Excluir esta viagem", type="secondary"):
+                        st.session_state["_confirm_del_viagem"] = viagem_sel
+                        st.rerun()
 
     if st.session_state.get("mostrar_resumo_viagem") == viagem_sel:
         st.markdown("---")

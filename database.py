@@ -115,6 +115,15 @@ def init_db():
             FOREIGN KEY (mes_id) REFERENCES meses(id) ON DELETE CASCADE
         );
         """)
+        # Migrations: adiciona colunas novas caso não existam
+        for _sql in [
+            "ALTER TABLE meses ADD COLUMN pago INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE viagens ADD COLUMN pago INTEGER NOT NULL DEFAULT 0",
+        ]:
+            try:
+                conn.execute(_sql)
+            except Exception:
+                pass
 
 
 # ---- FONTES DE RENDA ----
@@ -201,6 +210,16 @@ def remover_mes(mes_id):
 def atualizar_observacoes_mes(mes_id, observacoes):
     with get_conn() as conn:
         conn.execute("UPDATE meses SET observacoes=? WHERE id=?", (observacoes or None, mes_id))
+
+
+def marcar_mes_pago(mes_id, pago: int):
+    with get_conn() as conn:
+        conn.execute("UPDATE meses SET pago=? WHERE id=?", (pago, mes_id))
+
+
+def marcar_viagem_paga(viagem_id, pago: int):
+    with get_conn() as conn:
+        conn.execute("UPDATE viagens SET pago=? WHERE id=?", (pago, viagem_id))
 
 
 def copiar_lancamentos_mes(origem_id, destino_id, categorias):
