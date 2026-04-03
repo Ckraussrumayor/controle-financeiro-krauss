@@ -714,19 +714,21 @@ if pagina == "🏠 Visão Geral":
 
         # Gráfico
         if len(dados_hist) > 1:
-            import altair as alt
+            import plotly.express as px
             _df_bar = pd.DataFrame(dados_hist)
-            _chart_bar = (
-                alt.Chart(_df_bar)
-                .mark_bar(color="#667eea")
-                .encode(
-                    x=alt.X("Mês:N", sort=None, axis=alt.Axis(labelAngle=-45, title=None)),
-                    y=alt.Y("Total Acerto:Q", axis=alt.Axis(title="R$")),
-                    tooltip=["Mês", alt.Tooltip("Total Acerto", format=",.2f")],
-                )
-                .properties(height=320)
+            _fig_bar = px.bar(_df_bar, x="Mês", y="Total Acerto",
+                              color_discrete_sequence=["#667eea"],
+                              labels={"Total Acerto": "R$"})
+            _fig_bar.update_layout(
+                xaxis_tickangle=-45,
+                xaxis_title=None,
+                yaxis_title="R$",
+                showlegend=False,
+                height=340,
+                margin=dict(b=80),
             )
-            st.altair_chart(_chart_bar, use_container_width=True)
+            _fig_bar.update_traces(hovertemplate="%{x}<br>R$ %{y:,.2f}<extra></extra>")
+            st.plotly_chart(_fig_bar, use_container_width=True)
 
         # ── Dashboard consolidado ──
         st.divider()
@@ -767,21 +769,22 @@ if pagina == "🏠 Visão Geral":
                     "Planejado": total_d,
                     "Real": todos_totais[i],
                 })
-            import altair as alt
+            import plotly.express as px
             _df_comp_long = pd.DataFrame(comp_data).melt(id_vars="Mês", var_name="Tipo", value_name="Valor")
-            _chart_comp = (
-                alt.Chart(_df_comp_long)
-                .mark_bar()
-                .encode(
-                    x=alt.X("Mês:N", sort=None, axis=alt.Axis(labelAngle=-45, title=None)),
-                    y=alt.Y("Valor:Q", axis=alt.Axis(title="R$")),
-                    color=alt.Color("Tipo:N", scale=alt.Scale(domain=["Planejado", "Real"], range=["#667eea", "#f7971e"])),
-                    xOffset="Tipo:N",
-                    tooltip=["Mês", "Tipo", alt.Tooltip("Valor", format=",.2f")],
-                )
-                .properties(height=320)
+            _fig_comp = px.bar(
+                _df_comp_long, x="Mês", y="Valor", color="Tipo", barmode="group",
+                color_discrete_map={"Planejado": "#667eea", "Real": "#f7971e"},
+                labels={"Valor": "R$"},
             )
-            st.altair_chart(_chart_comp, use_container_width=True)
+            _fig_comp.update_layout(
+                xaxis_tickangle=-45,
+                xaxis_title=None,
+                yaxis_title="R$",
+                height=340,
+                margin=dict(b=80),
+            )
+            _fig_comp.update_traces(hovertemplate="%{x}<br>R$ %{y:,.2f}<extra></extra>")
+            st.plotly_chart(_fig_comp, use_container_width=True)
     else:
         st.info("Nenhum mês registrado ainda. Vá em **Contas do Mês** para criar o primeiro.")
 
