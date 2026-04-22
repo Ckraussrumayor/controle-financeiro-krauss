@@ -685,7 +685,7 @@ with st.sidebar:
     st.divider()
     # Indicador de backup pendente
     if st.session_state.get("_sync_hash") and db.db_hash() != st.session_state.get("_sync_hash", ""):
-        st.warning("⚠️ Dados alterados. Encerre a sessão para enviar o backup.")
+        st.warning("⚠️ Dados alterados. Use **💾 Salvar Alteração** ou encerre a sessão.")
     if st.button("🚪 Encerrar Sessão", use_container_width=True):
         # Backup final antes de fechar
         cfg_exit = email_utils.get_config()
@@ -707,6 +707,25 @@ with st.sidebar:
             st.session_state.clear()
             st.info("Sessão encerrada. Recarregue a página para entrar novamente.")
             st.stop()
+
+    if st.button("💾 Salvar Alteração", use_container_width=True):
+        _cfg_save = email_utils.get_config()
+        if email_utils.is_configured(_cfg_save):
+            _cur_h = db.db_hash()
+            if _cur_h != st.session_state.get("_sync_hash"):
+                try:
+                    _excel_s = _gerar_excel_bytes()
+                    _fn_s = f"financeiro_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                    email_utils.send_backup(_excel_s, _fn_s, _cfg_save)
+                    email_utils.delete_old_backups(_cfg_save)
+                    st.session_state["_sync_hash"] = _cur_h
+                    st.toast("✅ Alterações salvas no backup!")
+                except Exception as _sv_err:
+                    st.toast(f"❌ Falha ao salvar: {_sv_err}", icon="❌")
+            else:
+                st.toast("ℹ️ Sem alterações pendentes.", icon="ℹ️")
+        else:
+            st.toast("⚠️ E-mail não configurado. Configure em 📥 Importar / Exportar.", icon="⚠️")
 
     # Mostrar erro de backup e opção de forçar logout
     if st.session_state.get("_backup_fail"):
@@ -1344,19 +1363,24 @@ elif pagina == "✈️ Viagens / Eventos":
             if st.form_submit_button("Criar Viagem", type="primary"):
                 if nome_v:
                     db.criar_viagem(nome_v, str(data_v), mes_v if mes_v else None)
+                    st.session_state.pop("_viagem_selecionada", None)
                     st.rerun()
 
     if not viagens:
         st.info("Nenhuma viagem registrada. Crie uma acima.")
         st.stop()
 
-    # Selecionar viagem
+    # Selecionar viagem — padrão: sempre o mais recente (id DESC)
     opcoes_viagem = {
         v["id"]: v["nome"] + (" ✅ Pago" if ("pago" in v.keys() and v["pago"]) else "")
         for v in viagens
     }
-    viagem_sel = st.selectbox("Selecione a viagem", options=list(opcoes_viagem.keys()),
-                              format_func=lambda x: opcoes_viagem[x])
+    _ids_viagem = list(opcoes_viagem.keys())
+    _viagem_salva = st.session_state.get("_viagem_selecionada")
+    _idx_viagem = _ids_viagem.index(_viagem_salva) if _viagem_salva in _ids_viagem else 0
+    viagem_sel = st.selectbox("Selecione a viagem", options=_ids_viagem,
+                              format_func=lambda x: opcoes_viagem[x], index=_idx_viagem)
+    st.session_state["_viagem_selecionada"] = viagem_sel
 
     v_info = db.obter_viagem(viagem_sel)
     _pago_v = bool(v_info["pago"]) if v_info and "pago" in v_info.keys() else False
