@@ -664,6 +664,101 @@ border:2px solid #333;border-radius:8px;padding:20px;max-width:560px;margin:0 au
     return html
 
 
+def _resumo_mes_texto(mes_id) -> str:
+    """Gera versão em texto plano do resumo mensal (para copiar no WhatsApp)."""
+    m = db.obter_mes(mes_id)
+    mes_titulo = nome_mes(m["ano"], m["mes"]).upper()
+    totais = db.totais_mes(mes_id)
+    pgtos_dividas_total = db.total_pagamentos_mes(mes_id)
+    total_mes = sum(totais.values()) + pgtos_dividas_total
+    import math
+    arredondado = math.ceil(total_mes / 50) * 50
+    cat_icons = {
+        "conta_fixa": "🏠", "parcelada": "📅", "desp_nina": "🛒",
+        "devedor_nina": "💳", "extras_nino": "🎁"
+    }
+    linhas = [f"💰 *ACERTO MENSAL — {mes_titulo}*", ""]
+    for cat_key, cat_nome in db.CATEGORIAS_MES:
+        lancamentos = db.listar_lancamentos(mes_id, cat_key)
+        subtotal = totais.get(cat_key, 0)
+        icon = cat_icons.get(cat_key, "📌")
+        if cat_key == "extras_nino":
+            pgtos_mes = db.listar_pagamentos_divida(mes_id=mes_id)
+            pgtos_validos = [p for p in pgtos_mes if p["valor"] > 0.01]
+            if not lancamentos and not pgtos_validos:
+                continue
+            linhas.append(f"{icon} *{cat_nome}*")
+            for l in lancamentos:
+                linhas.append(f"  {l['descricao']}: {fmt(l['valor'])}")
+            for p in pgtos_validos:
+                saldo = db.saldo_divida(p["divida_id"])
+                linhas.append(f"  💳 {p['divida_desc']} (saldo: {fmt(saldo)}): {fmt(p['valor'])}")
+            subtotal_real = subtotal + db.total_pagamentos_mes(mes_id)
+            linhas.append(f"  _Subtotal: {fmt(subtotal_real)}_")
+        else:
+            if not lancamentos and subtotal == 0:
+                continue
+            linhas.append(f"{icon} *{cat_nome}*")
+            for l in lancamentos:
+                linhas.append(f"  {l['descricao']}: {fmt(l['valor'])}")
+            linhas.append(f"  _Subtotal: {fmt(subtotal)}_")
+        linhas.append("")
+    devolver = (totais.get("desp_nina", 0) + totais.get("conta_fixa", 0)
+                + totais.get("parcelada", 0) + totais.get("extras_nino", 0) + pgtos_dividas_total)
+    creditos = totais.get("devedor_nina", 0)
+    linhas.append("━" * 30)
+    linhas.append(f"*TOTAL DO MÊS: {fmt(total_mes)}*")
+    linhas.append(f"Arredondado (↑50): {fmt(arredondado)}")
+    linhas.append(f"Líquido Nina: {fmt(devolver + creditos)}")
+    if m["observacoes"]:
+        linhas.append(f"\n📝 {m['observacoes']}")
+    linhas.append(f"\n_Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}_")
+    return "\n".join(linhas)
+
+
+def _resumo_viagem_texto(viagem_id) -> str:
+    """Gera versão em texto plano do resumo de viagem (para copiar no WhatsApp)."""
+    v = db.obter_viagem(viagem_id)
+    titulo = v["nome"].upper()
+    data_str = v["data_viagem"] or ""
+    if data_str:
+        try:
+            data_str = datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+        except ValueError:
+            pass
+    totais_v = db.totais_viagem(viagem_id)
+    total_v = db.total_viagem(viagem_id)
+    total_nina = db.total_nina_viagem(viagem_id)
+    cat_icons_v = {
+        "pedagio": "🚗", "combustivel": "⛽",
+        "despesa_viagem": "🍽️", "desp_nina_viagem": "🛒",
+    }
+    linhas = [f"✈️ *RESUMO DA VIAGEM — {titulo}*"]
+    if data_str:
+        linhas.append(f"📅 {data_str}")
+    linhas.append("")
+    for cat_key, cat_nome in db.CATEGORIAS_VIAGEM:
+        lancamentos = db.listar_lancamentos_viagem(viagem_id, cat_key)
+        subtotal = totais_v.get(cat_key, 0)
+        if not lancamentos and subtotal == 0:
+            continue
+        icon = cat_icons_v.get(cat_key, "📌")
+        linhas.append(f"{icon} *{cat_nome}*")
+        for l in lancamentos:
+            nina_tag = " _(Nina)_" if l["pago_por_nina"] else ""
+            linhas.append(f"  {l['descricao']}: {fmt(l['valor'])}{nina_tag}")
+        linhas.append(f"  _Subtotal: {fmt(subtotal)}_")
+        linhas.append("")
+    linhas.append("━" * 30)
+    linhas.append(f"*TOTAL VIAGEM: {fmt(total_v)}*")
+    linhas.append(f"Pago por Nina: {fmt(total_nina)}")
+    linhas.append(f"Meu Custo: {fmt(total_v - total_nina)}")
+    if "observacoes" in v.keys() and v["observacoes"]:
+        linhas.append(f"\n📝 {v['observacoes']}")
+    linhas.append(f"\n_Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}_")
+    return "\n".join(linhas)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # SIDEBAR – Navegação
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1329,12 +1424,41 @@ elif pagina == "📝 Contas do Mês":
 
     if st.session_state.get("mostrar_resumo_mes") == mes_selecionado:
         st.markdown("---")
-        st.markdown("### 📋 Resumo para WhatsApp / Print")
-        st.info("💡 Tire um print desta tela para enviar pelo WhatsApp com o comprovante do banco.")
+        st.markdown("### 📋 Resumo — Acerto Mensal")
         st.markdown(_resumo_mes_html(mes_selecionado), unsafe_allow_html=True)
-        if st.button("✖️ Fechar Resumo", key="fechar_resumo_mes"):
-            del st.session_state["mostrar_resumo_mes"]
-            st.rerun()
+        st.markdown("**📤 Compartilhar:**")
+        _sc1, _sc2 = st.columns([3, 1])
+        with _sc1:
+            _html_mes = (
+                "<html><head><meta charset='utf-8'>"
+                "<style>body{font-family:'Courier New',monospace;background:#f5f5f5;padding:20px;}</style>"
+                "</head><body>"
+                + _resumo_mes_html(mes_selecionado)
+                + "</body></html>"
+            )
+            _fname_mes = f"acerto_{nome_mes(m['ano'], m['mes']).replace(' ', '_')}.html"
+            st.download_button(
+                "⬇️ Baixar HTML (abra no celular e compartilhe)",
+                data=_html_mes.encode("utf-8"),
+                file_name=_fname_mes,
+                mime="text/html",
+                use_container_width=True,
+                key="dl_resumo_mes",
+                help="Baixe o arquivo, abra no navegador do celular e use o botão Compartilhar nativo.",
+            )
+        with _sc2:
+            if st.button("✖️ Fechar", key="fechar_resumo_mes", use_container_width=True):
+                del st.session_state["mostrar_resumo_mes"]
+                st.rerun()
+        with st.expander("📋 Copiar texto para WhatsApp"):
+            st.caption("Selecione tudo e copie (Ctrl+A / toque e segure no celular).")
+            st.text_area(
+                "Texto formatado:",
+                value=_resumo_mes_texto(mes_selecionado),
+                height=320,
+                key="ta_texto_mes",
+                label_visibility="collapsed",
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1539,12 +1663,41 @@ elif pagina == "✈️ Viagens / Eventos":
 
     if st.session_state.get("mostrar_resumo_viagem") == viagem_sel:
         st.markdown("---")
-        st.markdown("### 📋 Resumo para WhatsApp / Print")
-        st.info("💡 Tire um print desta tela para enviar pelo WhatsApp com o comprovante do banco.")
+        st.markdown("### 📋 Resumo — Viagem")
         st.markdown(_resumo_viagem_html(viagem_sel), unsafe_allow_html=True)
-        if st.button("✖️ Fechar Resumo", key="fechar_resumo_viagem"):
-            del st.session_state["mostrar_resumo_viagem"]
-            st.rerun()
+        st.markdown("**📤 Compartilhar:**")
+        _sv1, _sv2 = st.columns([3, 1])
+        with _sv1:
+            _html_viag = (
+                "<html><head><meta charset='utf-8'>"
+                "<style>body{font-family:'Courier New',monospace;background:#f5f5f5;padding:20px;}</style>"
+                "</head><body>"
+                + _resumo_viagem_html(viagem_sel)
+                + "</body></html>"
+            )
+            _fname_viag = f"viagem_{v_info['nome'].replace(' ', '_')}.html"
+            st.download_button(
+                "⬇️ Baixar HTML (abra no celular e compartilhe)",
+                data=_html_viag.encode("utf-8"),
+                file_name=_fname_viag,
+                mime="text/html",
+                use_container_width=True,
+                key="dl_resumo_viagem",
+                help="Baixe o arquivo, abra no navegador do celular e use o botão Compartilhar nativo.",
+            )
+        with _sv2:
+            if st.button("✖️ Fechar", key="fechar_resumo_viagem", use_container_width=True):
+                del st.session_state["mostrar_resumo_viagem"]
+                st.rerun()
+        with st.expander("📋 Copiar texto para WhatsApp"):
+            st.caption("Selecione tudo e copie (Ctrl+A / toque e segure no celular).")
+            st.text_area(
+                "Texto formatado:",
+                value=_resumo_viagem_texto(viagem_sel),
+                height=320,
+                key="ta_texto_viag",
+                label_visibility="collapsed",
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

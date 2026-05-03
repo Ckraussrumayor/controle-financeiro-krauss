@@ -306,7 +306,7 @@ def listar_viagens():
         return conn.execute("""
             SELECT v.*, m.ano, m.mes
             FROM viagens v LEFT JOIN meses m ON v.mes_id = m.id
-            ORDER BY v.id DESC
+            ORDER BY COALESCE(v.data_viagem, '') DESC, v.id DESC
         """).fetchall()
 
 
